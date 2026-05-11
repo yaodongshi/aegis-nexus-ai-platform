@@ -95,7 +95,7 @@ services:
     environment:
       OPENAI_API_BASE_URL: http://litellm:4000/v1
       OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
-      WEBUI_AUTH: "False"
+      WEBUI_AUTH: "True"
     ports:
       - "${OPEN_WEBUI_PORT:-9000}:8080"
     volumes:

@@ -7,6 +7,7 @@ from itertools import count
 import json
 import logging
 import os
+import re
 from time import perf_counter
 from typing import Any
 from uuid import uuid4
@@ -1560,48 +1561,40 @@ class PlatformStore:
     def _sync_providers_to_litellm_config(self) -> None:
         """Sync enabled providers from backend_providers to litellm/config.yaml"""
         try:
-            # Get all enabled providers
             providers = self.list_providers(enabled=True)
-            
-            # Build model_list from providers
             model_list: list[dict[str, Any]] = []
             env_vars: dict[str, str] = {}
 
             for provider in providers:
                 if "open_webui" not in (provider.apps or []):
-                    continue  # Only sync providers that target open_webui
+                    continue
 
                 secret = self._get_provider_secret(provider.id)
                 if not secret:
                     continue
 
-                # Generate environment variable name
                 env_var_name = f"TEAM_AI_LITELLM_PROVIDER_{provider.id.upper()}_API_KEY"
                 env_vars[env_var_name] = secret
 
-                # Build model name (use preset_key or provider_type)
-                model_name = provider.preset_key or provider.provider_type
+                discovered_models = self._discover_provider_model_ids(provider, secret)
+                if not discovered_models:
+                    discovered_models = [self._default_provider_model_id(provider)]
 
-                # Infer actual model name from provider type
-                # For deepseek, use common model name
-                actual_model = f"{provider.provider_type}/deepseek-chat" if provider.provider_type == "deepseek" else f"{provider.provider_type}/model"
+                for discovered_model in discovered_models:
+                    model_list.append(
+                        {
+                            "model_name": self._build_provider_model_alias(provider, discovered_model),
+                            "litellm_params": {
+                                "model": self._build_litellm_model_ref(provider, discovered_model),
+                                "api_base": provider.base_url,
+                                "api_key": f"os.environ/{env_var_name}",
+                            },
+                        }
+                    )
 
-                model_entry = {
-                    "model_name": model_name,
-                    "litellm_params": {
-                        "model": actual_model,
-                        "api_base": provider.base_url,
-                        "api_key": f"os.environ/{env_var_name}",
-                    },
-                }
-                model_list.append(model_entry)
-
-            # Use /app/litellm as the base path (works in Docker)
-            # In Docker, this will be mounted via volume binding
             config_path = "/app/litellm/config.yaml"
             env_path = "/app/litellm/.env.litellm"
 
-            # Fallback to local path if running outside Docker
             if not os.path.exists(os.path.dirname(config_path)):
                 local_dir = os.path.join(os.path.dirname(__file__), "../../litellm")
                 if os.path.exists(local_dir):
@@ -1613,32 +1606,84 @@ class PlatformStore:
                 with open(config_path, "r") as f:
                     existing_config = yaml.safe_load(f) or {}
 
-            # Keep only static models (those without our provider prefix pattern)
-            # and add new provider models
             static_models = existing_config.get("model_list", [])
-            provider_ids = {p.id for p in providers}
-            
-            # Filter to keep only models that are NOT from providers
             static_model_list = [
-                m for m in static_models 
-                if not any(f"TEAM_AI_LITELLM_PROVIDER_{p_id.upper()}" in str(m.get("litellm_params", {}).get("api_key", "")) 
-                          for p_id in provider_ids)
+                m
+                for m in static_models
+                if not self._is_team_ai_managed_model_entry(m)
             ]
-            
-            new_model_list = static_model_list + model_list
-            existing_config["model_list"] = new_model_list
+            # De-duplicate by model_name to keep config deterministic.
+            deduped_models: dict[str, dict[str, Any]] = {}
+            for model in static_model_list + model_list:
+                model_name = model.get("model_name")
+                if isinstance(model_name, str) and model_name:
+                    deduped_models[model_name] = model
 
-            # Write updated config.yaml
+            existing_config["model_list"] = list(deduped_models.values())
+
             with open(config_path, "w") as f:
                 yaml.dump(existing_config, f, default_flow_style=False, sort_keys=False)
 
-            # Write .env.litellm
             with open(env_path, "w") as f:
                 f.write("# LiteLLM provider API keys - auto-generated by backend\n")
                 f.write("# This file is generated by backend/app/store.py when providers are created/updated\n")
-                for key, value in env_vars.items():
+                for key, value in sorted(env_vars.items()):
                     f.write(f"{key}={value}\n")
 
         except Exception as e:
-            # Log but don't fail the main operation
             logging.getLogger(__name__).error(f"Failed to sync providers to litellm config: {e}")
+
+    def _discover_provider_model_ids(self, provider: ProviderRecord, api_key: str) -> list[str]:
+        endpoint = self._models_endpoint(provider.base_url)
+        headers = {"Authorization": f"Bearer {api_key}"}
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                response = client.get(endpoint, headers=headers)
+            if response.status_code >= 400:
+                return []
+            payload = response.json()
+        except Exception:
+            return []
+
+        data = payload.get("data", []) if isinstance(payload, dict) else []
+        model_ids = [item.get("id") for item in data if isinstance(item, dict) and isinstance(item.get("id"), str)]
+        return sorted(set(model_ids))
+
+    @staticmethod
+    def _default_provider_model_id(provider: ProviderRecord) -> str:
+        if provider.provider_type == "deepseek":
+            return "deepseek-chat"
+        if provider.preset_key:
+            return provider.preset_key
+        return "model"
+
+    @staticmethod
+    def _build_provider_model_alias(provider: ProviderRecord, model_id: str) -> str:
+        prefix = provider.preset_key or provider.provider_type
+        normalized = re.sub(r"[^a-zA-Z0-9_-]+", "-", model_id).strip("-").lower()
+        if not normalized:
+            normalized = "model"
+        return f"{prefix}-{normalized}"
+
+    @staticmethod
+    def _build_litellm_model_ref(provider: ProviderRecord, model_id: str) -> str:
+        model_value = model_id.strip()
+        if provider.provider_type == "deepseek":
+            return model_value if model_value.startswith("deepseek/") else f"deepseek/{model_value}"
+        if provider.api_format == "openai":
+            return model_value if model_value.startswith("openai/") else f"openai/{model_value}"
+        if "/" in model_value:
+            return model_value
+        return f"{provider.provider_type}/{model_value}"
+
+    @staticmethod
+    def _is_team_ai_managed_model_entry(entry: Any) -> bool:
+        if not isinstance(entry, dict):
+            return False
+        params = entry.get("litellm_params")
+        if not isinstance(params, dict):
+            return False
+        api_key_ref = params.get("api_key")
+        if not isinstance(api_key_ref, str):
+            return False
+        return "os.environ/TEAM_AI_LITELLM_PROVIDER_" in api_key_ref
