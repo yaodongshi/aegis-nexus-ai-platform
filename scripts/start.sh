@@ -12,11 +12,13 @@ fi
 
 cd "${PROJECT_ROOT}"
 
+OPEN_WEBUI_PORT="${OPEN_WEBUI_PORT:-9000}"
+
 echo "[INFO] Starting Team AI Platform stack..."
 docker compose up -d
 
 echo "[INFO] Services started."
 echo "[INFO] Backend API: http://localhost:8000"
 echo "[INFO] LiteLLM endpoint: http://localhost:4000/v1"
-echo "[INFO] Open WebUI: http://localhost:3000"
+echo "[INFO] Open WebUI: http://localhost:${OPEN_WEBUI_PORT}"
 echo "[INFO] Qdrant: http://localhost:6333"

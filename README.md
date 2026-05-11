@@ -64,7 +64,7 @@ curl -fsS http://localhost:8000/health
 ### 6. Access endpoints
 
 - LiteLLM API: `http://localhost:4000/v1`
-- Open WebUI: `http://localhost:3000`
+- Open WebUI: `http://localhost:9000`
 - Qdrant: `http://localhost:6333`
 
 ### 7. Generate a virtual key
@@ -160,7 +160,7 @@ curl -fsS http://localhost:8000/health
 ### 6. 访问地址
 
 - LiteLLM API: `http://localhost:4000/v1`
-- Open WebUI: `http://localhost:3000`
+- Open WebUI: `http://localhost:9000`
 - Qdrant: `http://localhost:6333`
 
 ### 7. 生成虚拟 Key

@@ -3,7 +3,7 @@ set -euo pipefail
 
 BACKEND_URL="${1:-http://localhost:8000/health}"
 LITELLM_URL="${2:-http://localhost:4000/health}"
-WEBUI_URL="${3:-http://localhost:3000/health}"
+WEBUI_URL="${3:-http://localhost:9000/health}"
 QDRANT_URL="${4:-http://localhost:6333/healthz}"
 
 echo "[INFO] Checking backend..."
