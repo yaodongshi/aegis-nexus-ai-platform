@@ -185,6 +185,8 @@
       margin-top: 10px;
     }
 
+    .hidden { display: none; }
+
     .muted { color: var(--muted); }
     .ok { color: var(--ok); }
 
@@ -242,6 +244,7 @@
         </div>
         <div class="btns">
           <button id="addBtn">新增供应商</button>
+          <button id="cancelEditBtn" class="alt hidden">取消编辑</button>
           <button id="refreshBtn" class="alt">刷新列表</button>
         </div>
         <div id="toast" class="muted"></div>
@@ -250,9 +253,18 @@
       <section class="card">
         <div class="toolbar">
           <h2 style="margin:0;">供应商列表</h2>
-          <span id="count" class="pill">0 providers</span>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button id="exportBtn" class="alt">导出 JSON</button>
+            <button id="importBtn" class="alt">导入 JSON</button>
+            <span id="count" class="pill">0 providers</span>
+          </div>
+        </div>
+        <div class="row">
+          <label for="searchInput">搜索</label>
+          <input id="searchInput" placeholder="按名称、类型、端点、应用过滤" />
         </div>
         <div id="list" class="list"></div>
+        <input id="importFile" class="hidden" type="file" accept="application/json" />
       </section>
     </div>
   </div>
@@ -269,8 +281,14 @@
     const toast = document.getElementById("toast");
     const listBox = document.getElementById("list");
     const count = document.getElementById("count");
+    const searchInput = document.getElementById("searchInput");
+    const addBtn = document.getElementById("addBtn");
+    const cancelEditBtn = document.getElementById("cancelEditBtn");
+    const importFile = document.getElementById("importFile");
 
     let presets = [];
+    let providers = [];
+    let editingProviderId = null;
 
     function message(text, isError = false) {
       toast.textContent = text;
@@ -313,10 +331,11 @@
       const div = document.createElement("div");
       div.className = "item";
       const apps = (provider.apps || []).join(", ") || "-";
+      const stateLabel = provider.enabled ? "enabled" : "disabled";
       div.innerHTML = `
         <div class="item-head">
           <h3>${provider.name}</h3>
-          <span class="pill">${provider.scope}</span>
+          <span class="pill">${provider.scope} · ${stateLabel}</span>
         </div>
         <div class="meta">
           <div><strong>Type:</strong> ${provider.provider_type}</div>
@@ -325,6 +344,8 @@
           <div><strong>Key:</strong> ${provider.api_key_masked || "-"}</div>
         </div>
         <div class="actions">
+          <button data-op="edit" data-id="${provider.id}" class="alt">编辑</button>
+          <button data-op="toggle" data-id="${provider.id}" class="alt">${provider.enabled ? "停用" : "启用"}</button>
           <button data-op="discover" data-id="${provider.id}">获取模型</button>
           <button data-op="sync" data-id="${provider.id}" class="alt">保存并同步</button>
           <button data-op="delete" data-id="${provider.id}" class="warn">删除</button>
@@ -333,14 +354,69 @@
       return div;
     }
 
+    function filterProviders(allItems) {
+      const q = searchInput.value.trim().toLowerCase();
+      if (!q) return allItems;
+      return allItems.filter((item) => {
+        const hay = [
+          item.name,
+          item.provider_type,
+          item.base_url,
+          item.scope,
+          ...(item.apps || []),
+        ]
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(q);
+      });
+    }
+
+    function renderProviders() {
+      const filtered = filterProviders(providers);
+      count.textContent = `${filtered.length}/${providers.length} providers`;
+      listBox.innerHTML = "";
+      filtered.forEach((item) => listBox.appendChild(row(item)));
+    }
+
+    function resetForm() {
+      nameInput.value = "";
+      providerTypeInput.value = "";
+      baseUrlInput.value = "";
+      apiKeyInput.value = "";
+      appsInput.value = "";
+      notesInput.value = "";
+      scopeInput.value = "app";
+      editingProviderId = null;
+      addBtn.textContent = "新增供应商";
+      cancelEditBtn.classList.add("hidden");
+      if (presets.length > 0) {
+        presetSelect.value = presets[0].key;
+        pickPreset(presets[0].key);
+      }
+    }
+
+    function startEdit(providerId) {
+      const item = providers.find((p) => p.id === providerId);
+      if (!item) return;
+      editingProviderId = item.id;
+      nameInput.value = item.name || "";
+      providerTypeInput.value = item.provider_type || "";
+      baseUrlInput.value = item.base_url || "";
+      appsInput.value = (item.apps || []).join(",");
+      notesInput.value = item.notes || "";
+      scopeInput.value = item.scope || "app";
+      addBtn.textContent = "保存修改";
+      cancelEditBtn.classList.remove("hidden");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      message(`正在编辑: ${item.name}`);
+    }
+
     async function loadProviders() {
       const resp = await fetch("/api/providers?limit=200&offset=0");
       if (!resp.ok) throw new Error("加载供应商失败");
       const payload = await resp.json();
-      const items = payload.items || [];
-      count.textContent = `${payload.total || 0} providers`;
-      listBox.innerHTML = "";
-      items.forEach(item => listBox.appendChild(row(item)));
+      providers = payload.items || [];
+      renderProviders();
     }
 
     async function addProvider() {
@@ -348,7 +424,6 @@
         name: nameInput.value.trim(),
         provider_type: providerTypeInput.value.trim(),
         base_url: baseUrlInput.value.trim(),
-        api_key: apiKeyInput.value.trim(),
         preset_key: presetSelect.value || null,
         scope: scopeInput.value,
         apps: parseApps(appsInput.value),
@@ -357,21 +432,42 @@
         enabled: true,
         metadata: {},
       };
-      if (!body.name || !body.provider_type || !body.base_url || !body.api_key) {
-        message("请填写名称/类型/端点/API Key", true);
+      const apiKey = apiKeyInput.value.trim();
+      if (!body.name || !body.provider_type || !body.base_url) {
+        message("请填写名称/类型/端点", true);
         return;
       }
-      const resp = await fetch("/api/providers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!resp.ok) {
-        const detail = await resp.text();
-        throw new Error(`新增失败: ${detail}`);
+
+      if (editingProviderId) {
+        if (apiKey) body.api_key = apiKey;
+        const resp = await fetch(`/api/providers/${editingProviderId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!resp.ok) {
+          const detail = await resp.text();
+          throw new Error(`保存失败: ${detail}`);
+        }
+        message("保存成功");
+      } else {
+        if (!apiKey) {
+          message("新增时必须填写 API Key", true);
+          return;
+        }
+        body.api_key = apiKey;
+        const resp = await fetch("/api/providers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!resp.ok) {
+          const detail = await resp.text();
+          throw new Error(`新增失败: ${detail}`);
+        }
+        message("新增成功");
       }
-      apiKeyInput.value = "";
-      message("新增成功");
+      resetForm();
       await loadProviders();
     }
 
@@ -412,13 +508,93 @@
       await loadProviders();
     }
 
+    async function toggleProvider(providerId) {
+      const target = providers.find((item) => item.id === providerId);
+      if (!target) return;
+      const resp = await fetch(`/api/providers/${providerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !target.enabled }),
+      });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`切换状态失败: ${detail}`);
+      }
+      message(`已${target.enabled ? "停用" : "启用"}`);
+      await loadProviders();
+    }
+
+    function exportProviders() {
+      const blob = new Blob([JSON.stringify(providers, null, 2)], { type: "application/json" });
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = `providers-export-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(href);
+      message("导出成功");
+    }
+
+    async function importProviders(file) {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const items = Array.isArray(parsed) ? parsed : [];
+      if (!items.length) {
+        message("导入文件为空", true);
+        return;
+      }
+
+      let created = 0;
+      for (const item of items) {
+        if (!item.name || !item.provider_type || !item.base_url) continue;
+        const payload = {
+          name: item.name,
+          provider_type: item.provider_type,
+          base_url: item.base_url,
+          api_key: "sk-import-required-change-me",
+          preset_key: item.preset_key || null,
+          scope: item.scope || "app",
+          apps: Array.isArray(item.apps) ? item.apps : [],
+          api_format: item.api_format || "openai",
+          notes: item.notes || null,
+          enabled: item.enabled !== false,
+          metadata: item.metadata || {},
+        };
+        const resp = await fetch("/api/providers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (resp.ok) created += 1;
+      }
+      await loadProviders();
+      message(`导入完成，新增 ${created} 条（API Key 已使用占位值，需逐条更新）`);
+    }
+
     presetSelect.addEventListener("change", (e) => pickPreset(e.target.value));
-    document.getElementById("addBtn").addEventListener("click", async () => {
+    addBtn.addEventListener("click", async () => {
       try { await addProvider(); } catch (err) { message(err.message, true); }
+    });
+    cancelEditBtn.addEventListener("click", () => {
+      resetForm();
+      message("已取消编辑");
     });
     document.getElementById("refreshBtn").addEventListener("click", async () => {
       try { await loadProviders(); message("已刷新"); } catch (err) { message(err.message, true); }
     });
+    document.getElementById("exportBtn").addEventListener("click", () => {
+      try { exportProviders(); } catch (err) { message(err.message, true); }
+    });
+    document.getElementById("importBtn").addEventListener("click", () => importFile.click());
+    importFile.addEventListener("change", async () => {
+      const file = importFile.files && importFile.files[0];
+      if (!file) return;
+      try { await importProviders(file); } catch (err) { message(err.message, true); }
+      importFile.value = "";
+    });
+    searchInput.addEventListener("input", () => renderProviders());
 
     listBox.addEventListener("click", async (e) => {
       const btn = e.target.closest("button[data-op]");
@@ -429,6 +605,8 @@
         if (op === "discover") await discover(id);
         if (op === "sync") await syncProvider(id);
         if (op === "delete") await removeProvider(id);
+        if (op === "edit") startEdit(id);
+        if (op === "toggle") await toggleProvider(id);
       } catch (err) {
         message(err.message, true);
       }
@@ -438,6 +616,7 @@
       try {
         await loadPresets();
         await loadProviders();
+        resetForm();
         message("Provider Console ready");
       } catch (err) {
         message(err.message, true);

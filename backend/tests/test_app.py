@@ -101,6 +101,31 @@ class TestBackendApp(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Provider Console", response.text)
 
+    def test_provider_update_enabled(self) -> None:
+        create_resp = self.client.post(
+            "/api/providers",
+            json={
+                "name": "Toggle Provider",
+                "provider_type": "openai",
+                "base_url": "https://api.openai.com",
+                "api_key": "sk-toggle-12345678",
+                "scope": "app",
+                "apps": ["open_webui"],
+                "api_format": "openai",
+                "enabled": True,
+            },
+        )
+        self.assertEqual(create_resp.status_code, 201)
+        provider_id = create_resp.json()["id"]
+
+        patch_resp = self.client.patch(f"/api/providers/{provider_id}", json={"enabled": False})
+        self.assertEqual(patch_resp.status_code, 200)
+        self.assertFalse(patch_resp.json()["enabled"])
+
+        get_resp = self.client.get(f"/api/providers/{provider_id}")
+        self.assertEqual(get_resp.status_code, 200)
+        self.assertFalse(get_resp.json()["enabled"])
+
 
 if __name__ == "__main__":
     unittest.main()
