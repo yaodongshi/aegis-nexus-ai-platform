@@ -52,10 +52,12 @@ class ModelUpdateRequest(BaseModel):
 
 
 class KeyIssueRequest(BaseModel):
-    user_id: str
+    label: str | None = None
+    user_id: str = "admin"
     project_id: str | None = None
-    scope: str
+    scope: str = "project:*"
     expire_at: datetime | None = None
+    expires_days: int | None = None
     quota: int | None = None
 
 

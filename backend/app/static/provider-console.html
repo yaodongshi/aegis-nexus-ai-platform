@@ -1048,14 +1048,15 @@
         throw new Error(`生成失败: ${detail}`);
       }
       const data = await resp.json();
+      const keyValue = data.key_secret || data.key;
       // Show the key value prominently (only visible once)
       newKeyReveal.classList.remove("hidden");
       newKeyReveal.innerHTML = `
         <div class="key-reveal">
           <strong>⚠️ 请立即复制！此 Key 仅展示一次</strong>
-          <code id="newKeyValue">${data.key}</code>
+          <code id="newKeyValue">${keyValue}</code>
           <br/>
-          <button class="copy-btn" onclick="navigator.clipboard.writeText('${data.key}').then(()=>this.textContent='已复制 ✓')">复制 Key</button>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText('${keyValue}').then(()=>this.textContent='已复制 ✓')">复制 Key</button>
         </div>
       `;
       document.getElementById("keyLabel").value = "";

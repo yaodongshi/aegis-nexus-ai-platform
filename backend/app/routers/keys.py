@@ -22,6 +22,11 @@ def list_keys(
 
 @router.post("/issue", response_model=KeyIssueResponse, status_code=status.HTTP_201_CREATED)
 def issue_key(payload: KeyIssueRequest, store: PlatformStore = Depends(get_store)) -> KeyIssueResponse:
+    from datetime import datetime, timezone, timedelta
+    # Handle expires_days convenience parameter
+    if payload.expires_days and payload.expires_days > 0 and not payload.expire_at:
+        now = datetime.now(timezone.utc)
+        payload.expire_at = now + timedelta(days=payload.expires_days)
     _, response = store.issue_key(payload)
     return response
 
