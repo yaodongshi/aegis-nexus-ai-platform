@@ -66,6 +66,17 @@ curl -fsS http://localhost:8000/health
 - LiteLLM API: `http://localhost:4000/v1`
 - Open WebUI: `http://localhost:9000`
 - Qdrant: `http://localhost:6333`
+- Backend API docs: `http://localhost:8000/docs`
+
+### 6.1 Provider management on Web
+
+Use Web APIs (Swagger UI) to manage providers instead of editing provider config files manually:
+
+1. Open `http://localhost:8000/docs`
+1. Call `GET /api/providers/presets` to view preset templates
+1. Call `POST /api/providers` to add provider (name/base_url/api_key/apps)
+1. Call `POST /api/providers/{provider_id}/discover-models` to auto-fetch `/v1/models`
+1. Call `POST /api/providers/{provider_id}/sync` to sync as unified provider
 
 ### 7. Generate a virtual key
 
@@ -162,6 +173,17 @@ curl -fsS http://localhost:8000/health
 - LiteLLM API: `http://localhost:4000/v1`
 - Open WebUI: `http://localhost:9000`
 - Qdrant: `http://localhost:6333`
+- Backend API 文档: `http://localhost:8000/docs`
+
+### 6.1 在 Web 上管理供应商
+
+可通过 Web API（Swagger UI）管理供应商，不再手改供应商配置文件：
+
+1. 打开 `http://localhost:8000/docs`
+1. 调用 `GET /api/providers/presets` 查看预设模板
+1. 调用 `POST /api/providers` 新增供应商（名称/端点/API Key/应用绑定）
+1. 调用 `POST /api/providers/{provider_id}/discover-models` 自动获取 `/v1/models`
+1. 调用 `POST /api/providers/{provider_id}/sync` 作为统一供应商同步到目标应用
 
 ### 7. 生成虚拟 Key
 

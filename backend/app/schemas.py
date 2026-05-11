@@ -167,3 +167,68 @@ class ApprovalSubmitRequest(BaseModel):
     action: str
     resource_id: str
     reason: str
+
+
+class ProviderPresetRecord(BaseModel):
+    key: str
+    name: str
+    provider_type: str
+    default_base_url: str
+    api_format: Literal["openai", "anthropic", "openai_responses"] = "openai"
+    suggested_apps: list[str] = Field(default_factory=list)
+
+
+class ProviderCreateRequest(BaseModel):
+    name: str
+    provider_type: str
+    base_url: str
+    api_key: str
+    preset_key: str | None = None
+    scope: Literal["app", "unified"] = "app"
+    apps: list[str] = Field(default_factory=list)
+    api_format: Literal["openai", "anthropic", "openai_responses"] = "openai"
+    notes: str | None = None
+    enabled: bool = True
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProviderUpdateRequest(BaseModel):
+    name: str | None = None
+    provider_type: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    preset_key: str | None = None
+    scope: Literal["app", "unified"] | None = None
+    apps: list[str] | None = None
+    api_format: Literal["openai", "anthropic", "openai_responses"] | None = None
+    notes: str | None = None
+    enabled: bool | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class ProviderRecord(BaseModel):
+    id: str
+    name: str
+    provider_type: str
+    base_url: str
+    preset_key: str | None = None
+    scope: Literal["app", "unified"] = "app"
+    apps: list[str] = Field(default_factory=list)
+    api_format: Literal["openai", "anthropic", "openai_responses"] = "openai"
+    notes: str | None = None
+    enabled: bool = True
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    api_key_masked: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProviderSyncRequest(BaseModel):
+    target_apps: list[str] = Field(default_factory=list)
+
+
+class ProviderModelDiscoveryResponse(BaseModel):
+    provider_id: str
+    endpoint: str
+    models: list[str] = Field(default_factory=list)
+    fetched_at: datetime

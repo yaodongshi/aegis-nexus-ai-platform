@@ -64,6 +64,38 @@ class TestBackendApp(unittest.TestCase):
         self.assertEqual(payload["status"], "active")
         self.assertTrue(payload["key_secret"].startswith("sk-virtual-"))
 
+    def test_provider_presets_and_create(self) -> None:
+        presets_resp = self.client.get("/api/providers/presets")
+        self.assertEqual(presets_resp.status_code, 200)
+        presets = presets_resp.json()
+        self.assertTrue(any(item["key"] == "openai_official" for item in presets))
+
+        create_resp = self.client.post(
+            "/api/providers",
+            json={
+                "name": "OpenAI Prod",
+                "provider_type": "openai",
+                "base_url": "https://api.openai.com",
+                "api_key": "sk-1234567890abcdef",
+                "preset_key": "openai_official",
+                "scope": "unified",
+                "apps": ["open_webui", "codex"],
+                "api_format": "openai",
+                "enabled": True,
+            },
+        )
+        self.assertEqual(create_resp.status_code, 201)
+        provider = create_resp.json()
+        self.assertEqual(provider["name"], "OpenAI Prod")
+        self.assertEqual(provider["scope"], "unified")
+        self.assertEqual(provider["api_key_masked"], "sk-1...cdef")
+
+        list_resp = self.client.get("/api/providers", params={"app": "open_webui"})
+        self.assertEqual(list_resp.status_code, 200)
+        payload = list_resp.json()
+        self.assertGreaterEqual(payload["total"], 1)
+        self.assertTrue(payload["items"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -266,3 +266,65 @@
 ### GET /api/approvals/{id}
 
 查询审批进度。
+
+## 7. 供应商管理 API（Web 管理）
+
+对齐 ccswitch 常见体验：预设添加、统一供应商、自动获取模型。
+
+### GET /api/providers/presets
+
+获取供应商预设列表。
+
+响应字段：
+
+- `key`：预设唯一键
+- `name`：预设名称
+- `provider_type`：供应商类型
+- `default_base_url`：默认端点
+- `api_format`：API 协议格式
+- `suggested_apps`：建议绑定应用
+
+### GET /api/providers
+
+分页查询供应商。
+
+查询参数：
+
+- `scope`：`app` 或 `unified`
+- `app`：按应用过滤
+- `enabled`：是否启用
+- `limit` / `offset`：分页参数
+
+### POST /api/providers
+
+新增供应商。
+
+请求字段：
+
+- `name`
+- `provider_type`
+- `base_url`
+- `api_key`
+- `preset_key`（可选）
+- `scope`（`app` 或 `unified`）
+- `apps`（应用绑定）
+- `api_format`
+- `notes`
+- `enabled`
+- `metadata`
+
+### PATCH /api/providers/{id}
+
+更新供应商信息（支持更新 API Key）。
+
+### DELETE /api/providers/{id}
+
+删除供应商。
+
+### POST /api/providers/{id}/discover-models
+
+自动获取模型：调用供应商端点的 `/v1/models`，返回模型 ID 列表。
+
+### POST /api/providers/{id}/sync
+
+将供应商作为统一供应商同步到目标应用列表。

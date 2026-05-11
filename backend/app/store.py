@@ -4,10 +4,12 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
 from itertools import count
+import json
 import os
 from typing import Any
 from uuid import uuid4
 
+import httpx
 import psycopg2
 from psycopg2.extras import Json
 
@@ -20,6 +22,11 @@ from .schemas import (
     ModelRecord,
     ModelRegisterRequest,
     ModelUpdateRequest,
+    ProviderCreateRequest,
+    ProviderModelDiscoveryResponse,
+    ProviderRecord,
+    ProviderSyncRequest,
+    ProviderUpdateRequest,
     PolicyRecord,
     PolicyUpsertRequest,
     SessionCreateRequest,
@@ -40,12 +47,15 @@ class PlatformStore:
     sessions: dict[str, SessionRecord] = field(default_factory=dict)
     policies: dict[str, PolicyRecord] = field(default_factory=dict)
     approvals: dict[str, ApprovalRecord] = field(default_factory=dict)
+    providers: dict[str, ProviderRecord] = field(default_factory=dict)
+    provider_secrets: dict[str, str] = field(default_factory=dict)
     _model_seq: count = field(default_factory=lambda: count(1))
     _key_seq: count = field(default_factory=lambda: count(1))
     _skill_seq: count = field(default_factory=lambda: count(1))
     _session_seq: count = field(default_factory=lambda: count(1))
     _policy_seq: count = field(default_factory=lambda: count(1))
     _approval_seq: count = field(default_factory=lambda: count(1))
+    _provider_seq: count = field(default_factory=lambda: count(1))
 
     def __post_init__(self) -> None:
         if self.db_dsn is None:
@@ -697,6 +707,228 @@ class PlatformStore:
             return self._approval_from_row(row) if row else None
         return self.approvals.get(approval_id)
 
+    def list_providers(
+        self,
+        *,
+        scope: str | None = None,
+        app: str | None = None,
+        enabled: bool | None = None,
+    ) -> list[ProviderRecord]:
+        if self._db_enabled:
+            query = (
+                "SELECT provider_id, name, provider_type, base_url, preset_key, scope, apps, "
+                "api_format, notes, enabled, metadata, api_key, created_at, updated_at "
+                "FROM backend_providers WHERE 1=1"
+            )
+            params: list[Any] = []
+            if scope is not None:
+                query += " AND scope = %s"
+                params.append(scope)
+            if enabled is not None:
+                query += " AND enabled = %s"
+                params.append(enabled)
+            if app is not None:
+                query += " AND apps ? %s"
+                params.append(app)
+            query += " ORDER BY created_at DESC"
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(query, tuple(params))
+                rows = cur.fetchall()
+            return [self._provider_from_row(row) for row in rows]
+
+        records = list(self.providers.values())
+        if scope is not None:
+            records = [record for record in records if record.scope == scope]
+        if enabled is not None:
+            records = [record for record in records if record.enabled == enabled]
+        if app is not None:
+            records = [record for record in records if app in record.apps]
+        return records
+
+    def create_provider(self, payload: ProviderCreateRequest) -> ProviderRecord:
+        now = datetime.now(UTC)
+        provider_id = self._next_id("provider")
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO backend_providers (
+                        provider_id, name, provider_type, base_url, preset_key,
+                        scope, apps, api_format, notes, enabled, metadata,
+                        api_key, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING provider_id, name, provider_type, base_url, preset_key,
+                              scope, apps, api_format, notes, enabled, metadata,
+                              api_key, created_at, updated_at
+                    """,
+                    (
+                        provider_id,
+                        payload.name,
+                        payload.provider_type,
+                        payload.base_url,
+                        payload.preset_key,
+                        payload.scope,
+                        Json(payload.apps),
+                        payload.api_format,
+                        payload.notes,
+                        payload.enabled,
+                        Json(payload.metadata),
+                        payload.api_key,
+                        now,
+                        now,
+                    ),
+                )
+                row = cur.fetchone()
+            return self._provider_from_row(row)
+
+        record = ProviderRecord(
+            id=provider_id,
+            name=payload.name,
+            provider_type=payload.provider_type,
+            base_url=payload.base_url,
+            preset_key=payload.preset_key,
+            scope=payload.scope,
+            apps=payload.apps,
+            api_format=payload.api_format,
+            notes=payload.notes,
+            enabled=payload.enabled,
+            metadata=payload.metadata,
+            api_key_masked=self._mask_key(payload.api_key),
+            created_at=now,
+            updated_at=now,
+        )
+        self.providers[provider_id] = record
+        self.provider_secrets[provider_id] = payload.api_key
+        return record
+
+    def get_provider(self, provider_id: str) -> ProviderRecord | None:
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT provider_id, name, provider_type, base_url, preset_key,
+                           scope, apps, api_format, notes, enabled, metadata,
+                           api_key, created_at, updated_at
+                    FROM backend_providers WHERE provider_id = %s
+                    """,
+                    (provider_id,),
+                )
+                row = cur.fetchone()
+            return self._provider_from_row(row) if row else None
+        return self.providers.get(provider_id)
+
+    def update_provider(self, provider_id: str, payload: ProviderUpdateRequest) -> ProviderRecord | None:
+        existing = self.get_provider(provider_id)
+        if existing is None:
+            return None
+
+        if self._db_enabled:
+            secret = self._get_provider_secret(provider_id)
+            data = payload.model_dump(exclude_none=True)
+            updated = existing.model_copy(update={k: v for k, v in data.items() if k != "api_key"} | {"updated_at": datetime.now(UTC)})
+            updated_secret = data.get("api_key", secret)
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE backend_providers
+                    SET name = %s,
+                        provider_type = %s,
+                        base_url = %s,
+                        preset_key = %s,
+                        scope = %s,
+                        apps = %s,
+                        api_format = %s,
+                        notes = %s,
+                        enabled = %s,
+                        metadata = %s,
+                        api_key = %s,
+                        updated_at = %s
+                    WHERE provider_id = %s
+                    RETURNING provider_id, name, provider_type, base_url, preset_key,
+                              scope, apps, api_format, notes, enabled, metadata,
+                              api_key, created_at, updated_at
+                    """,
+                    (
+                        updated.name,
+                        updated.provider_type,
+                        updated.base_url,
+                        updated.preset_key,
+                        updated.scope,
+                        Json(updated.apps),
+                        updated.api_format,
+                        updated.notes,
+                        updated.enabled,
+                        Json(updated.metadata),
+                        updated_secret,
+                        updated.updated_at,
+                        provider_id,
+                    ),
+                )
+                row = cur.fetchone()
+            return self._provider_from_row(row)
+
+        data = payload.model_dump(exclude_none=True)
+        updated = existing.model_copy(update={k: v for k, v in data.items() if k != "api_key"} | {"updated_at": datetime.now(UTC)})
+        if "api_key" in data:
+            self.provider_secrets[provider_id] = data["api_key"]
+            updated = updated.model_copy(update={"api_key_masked": self._mask_key(data["api_key"])})
+        self.providers[provider_id] = updated
+        return updated
+
+    def delete_provider(self, provider_id: str) -> bool:
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute("DELETE FROM backend_providers WHERE provider_id = %s", (provider_id,))
+                return cur.rowcount > 0
+        existed = provider_id in self.providers
+        self.providers.pop(provider_id, None)
+        self.provider_secrets.pop(provider_id, None)
+        return existed
+
+    def sync_provider(self, provider_id: str, payload: ProviderSyncRequest) -> ProviderRecord | None:
+        existing = self.get_provider(provider_id)
+        if existing is None:
+            return None
+        update_payload = ProviderUpdateRequest(
+            scope="unified",
+            apps=payload.target_apps or existing.apps,
+        )
+        return self.update_provider(provider_id, update_payload)
+
+    def discover_provider_models(self, provider_id: str) -> ProviderModelDiscoveryResponse:
+        provider = self.get_provider(provider_id)
+        if provider is None:
+            raise ValueError("Provider not found")
+        api_key = self._get_provider_secret(provider_id)
+        if not api_key:
+            raise ValueError("Provider API key is missing")
+
+        endpoint = self._models_endpoint(provider.base_url)
+        headers = {"Authorization": f"Bearer {api_key}"}
+        with httpx.Client(timeout=15.0) as client:
+            response = client.get(endpoint, headers=headers)
+
+        if response.status_code >= 400:
+            raise ValueError(f"Provider endpoint error: HTTP {response.status_code}")
+
+        try:
+            payload = response.json()
+        except json.JSONDecodeError as exc:
+            raise ValueError("Provider response is not valid JSON") from exc
+
+        data = payload.get("data", []) if isinstance(payload, dict) else []
+        model_ids: list[str] = []
+        for row in data:
+            if isinstance(row, dict) and isinstance(row.get("id"), str):
+                model_ids.append(row["id"])
+
+        return ProviderModelDiscoveryResponse(
+            provider_id=provider_id,
+            endpoint=endpoint,
+            models=sorted(set(model_ids)),
+            fetched_at=datetime.now(UTC),
+        )
+
     def _next_id(self, prefix: str) -> str:
         if self._db_enabled:
             return f"{prefix}_{uuid4().hex[:12]}"
@@ -707,6 +939,7 @@ class PlatformStore:
             "session": self._session_seq,
             "policy": self._policy_seq,
             "approval": self._approval_seq,
+            "provider": self._provider_seq,
         }
         return f"{prefix}_{next(seq_map[prefix])}"
 
@@ -864,6 +1097,32 @@ class PlatformStore:
                 ON backend_approvals(status, created_at DESC)
                 """
             )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS backend_providers (
+                    provider_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    provider_type TEXT NOT NULL,
+                    base_url TEXT NOT NULL,
+                    preset_key TEXT,
+                    scope TEXT NOT NULL DEFAULT 'app',
+                    apps JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    api_format TEXT NOT NULL DEFAULT 'openai',
+                    notes TEXT,
+                    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    api_key TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_backend_providers_scope_enabled_created
+                ON backend_providers(scope, enabled, created_at DESC)
+                """
+            )
 
     @staticmethod
     def _model_from_row(row: tuple[Any, ...]) -> ModelRecord:
@@ -957,4 +1216,46 @@ class PlatformStore:
             reason=row[6],
             created_at=row[7],
             updated_at=row[8],
+        )
+
+    def _get_provider_secret(self, provider_id: str) -> str | None:
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute("SELECT api_key FROM backend_providers WHERE provider_id = %s", (provider_id,))
+                row = cur.fetchone()
+            return row[0] if row else None
+        return self.provider_secrets.get(provider_id)
+
+    @staticmethod
+    def _mask_key(raw: str) -> str:
+        if len(raw) <= 8:
+            return "*" * len(raw)
+        return f"{raw[:4]}...{raw[-4:]}"
+
+    @staticmethod
+    def _models_endpoint(base_url: str) -> str:
+        normalized = base_url.rstrip("/")
+        if normalized.endswith("/v1"):
+            return f"{normalized}/models"
+        return f"{normalized}/v1/models"
+
+    def _provider_from_row(self, row: tuple[Any, ...]) -> ProviderRecord:
+        apps = row[6] if isinstance(row[6], list) else []
+        metadata = row[10] if isinstance(row[10], dict) else {}
+        api_key = row[11] if isinstance(row[11], str) else ""
+        return ProviderRecord(
+            id=row[0],
+            name=row[1],
+            provider_type=row[2],
+            base_url=row[3],
+            preset_key=row[4],
+            scope=row[5],
+            apps=apps,
+            api_format=row[7],
+            notes=row[8],
+            enabled=row[9],
+            metadata=metadata,
+            api_key_masked=self._mask_key(api_key) if api_key else None,
+            created_at=row[12],
+            updated_at=row[13],
         )
