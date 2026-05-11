@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LITELLM_URL="${1:-http://localhost:4000/health}"
-WEBUI_URL="${2:-http://localhost:3000/health}"
-QDRANT_URL="${3:-http://localhost:6333/healthz}"
+BACKEND_URL="${1:-http://localhost:8000/health}"
+LITELLM_URL="${2:-http://localhost:4000/health}"
+WEBUI_URL="${3:-http://localhost:3000/health}"
+QDRANT_URL="${4:-http://localhost:6333/healthz}"
+
+echo "[INFO] Checking backend..."
+curl -sS "${BACKEND_URL}" | cat
 
 echo "[INFO] Checking LiteLLM..."
 curl -sS "${LITELLM_URL}" | cat
