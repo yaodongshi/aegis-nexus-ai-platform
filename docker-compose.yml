@@ -11,6 +11,7 @@ services:
       - .env
     environment:
       TEAM_AI_PLATFORM_PROJECT_NAME: Aegis Nexus AI Platform
+      TEAM_AI_PLATFORM_DB_DSN: ${TEAM_AI_PLATFORM_DB_DSN}
     volumes:
       - ./:/workspace
     ports:

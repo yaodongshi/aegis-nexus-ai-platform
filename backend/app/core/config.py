@@ -12,6 +12,7 @@ class Settings:
     default_admin_email: str = getenv("TEAM_AI_PLATFORM_DEFAULT_ADMIN_EMAIL", "admin@example.com")
     default_model_provider: str = getenv("TEAM_AI_PLATFORM_DEFAULT_MODEL_PROVIDER", "openai")
     default_model_name: str = getenv("TEAM_AI_PLATFORM_DEFAULT_MODEL_NAME", "gpt-4o")
+    db_dsn: str = getenv("TEAM_AI_PLATFORM_DB_DSN", "")
 
 
 @lru_cache
