@@ -1,28 +1,30 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from ..schemas import ModelRegisterRequest, ModelRecord, ModelUpdateRequest
+from ..schemas import ModelRegisterRequest, ModelRecord, ModelUpdateRequest, PageResponse
 from ..store import PlatformStore
 from .dependencies import get_store
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
 
-@router.get("", response_model=list[ModelRecord])
+@router.get("", response_model=PageResponse[ModelRecord])
 def list_models(
     provider: str | None = None,
     availability: str | None = None,
-    limit: int | None = None,
-    offset: int = 0,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     store: PlatformStore = Depends(get_store),
-) -> list[ModelRecord]:
-    return store.list_models(
+) -> PageResponse[ModelRecord]:
+    records = store.list_models(
         provider=provider,
         availability=availability,
-        limit=limit,
-        offset=offset,
+        limit=None,
+        offset=0,
     )
+    paged = records[offset : offset + limit]
+    return PageResponse[ModelRecord](items=paged, total=len(records), limit=limit, offset=offset)
 
 
 @router.post("", response_model=ModelRecord, status_code=status.HTTP_201_CREATED)

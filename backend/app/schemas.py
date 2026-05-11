@@ -1,9 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, Field
+
+T = TypeVar("T")
+
+
+class PageResponse(BaseModel, Generic[T]):
+    items: list[T] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 20
+    offset: int = 0
 
 
 class ModelRecord(BaseModel):

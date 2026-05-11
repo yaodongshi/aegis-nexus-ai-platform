@@ -22,8 +22,19 @@
 ### 1.3 返回风格
 
 - 成功返回 JSON
-- 列表接口默认支持分页、过滤、排序
+- 列表接口统一返回分页结构：`items`、`total`、`limit`、`offset`
 - 时间统一使用 ISO 8601 / UTC
+
+列表接口响应示例：
+
+```json
+{
+  "items": [],
+  "total": 0,
+  "limit": 20,
+  "offset": 0
+}
+```
 
 ## 2. 模型目录 API
 
@@ -46,19 +57,24 @@
 示例：
 
 ```json
-[
-  {
-    "id": "gpt-4o",
-    "provider": "openai",
-    "name": "GPT-4o",
-    "endpoint": "https://api.openai.com/v1/chat/completions",
-    "context_window": 128000,
-    "cost_tier": "high",
-    "availability": "active",
-    "tags": ["chat", "code"],
-    "labels": {"team": "platform", "tier": "prod"}
-  }
-]
+{
+  "items": [
+    {
+      "id": "gpt-4o",
+      "provider": "openai",
+      "name": "GPT-4o",
+      "endpoint": "https://api.openai.com/v1/chat/completions",
+      "context_window": 128000,
+      "cost_tier": "high",
+      "availability": "active",
+      "tags": ["chat", "code"],
+      "labels": {"team": "platform", "tier": "prod"}
+    }
+  ],
+  "total": 1,
+  "limit": 20,
+  "offset": 0
+}
 ```
 
 ### POST /api/models/register

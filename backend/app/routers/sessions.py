@@ -1,17 +1,23 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from ..schemas import SessionCreateRequest, SessionRecord, SessionUpdateRequest
+from ..schemas import PageResponse, SessionCreateRequest, SessionRecord, SessionUpdateRequest
 from ..store import PlatformStore
 from .dependencies import get_store
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
 
-@router.get("", response_model=list[SessionRecord])
-def list_sessions(store: PlatformStore = Depends(get_store)) -> list[SessionRecord]:
-    return store.list_sessions()
+@router.get("", response_model=PageResponse[SessionRecord])
+def list_sessions(
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    store: PlatformStore = Depends(get_store),
+) -> PageResponse[SessionRecord]:
+    records = store.list_sessions()
+    paged = records[offset : offset + limit]
+    return PageResponse[SessionRecord](items=paged, total=len(records), limit=limit, offset=offset)
 
 
 @router.get("/{session_id}", response_model=SessionRecord)

@@ -1,17 +1,23 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from ..schemas import KeyIssueRequest, KeyIssueResponse, KeyRecord
+from ..schemas import KeyIssueRequest, KeyIssueResponse, KeyRecord, PageResponse
 from ..store import PlatformStore
 from .dependencies import get_store
 
 router = APIRouter(prefix="/api/keys", tags=["keys"])
 
 
-@router.get("", response_model=list[KeyRecord])
-def list_keys(store: PlatformStore = Depends(get_store)) -> list[KeyRecord]:
-    return store.list_keys()
+@router.get("", response_model=PageResponse[KeyRecord])
+def list_keys(
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    store: PlatformStore = Depends(get_store),
+) -> PageResponse[KeyRecord]:
+    records = store.list_keys()
+    paged = records[offset : offset + limit]
+    return PageResponse[KeyRecord](items=paged, total=len(records), limit=limit, offset=offset)
 
 
 @router.post("/issue", response_model=KeyIssueResponse, status_code=status.HTTP_201_CREATED)

@@ -1,17 +1,23 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from ..schemas import ApprovalRecord, ApprovalSubmitRequest
+from ..schemas import ApprovalRecord, ApprovalSubmitRequest, PageResponse
 from ..store import PlatformStore
 from .dependencies import get_store
 
 router = APIRouter(prefix="/api/approvals", tags=["approvals"])
 
 
-@router.get("", response_model=list[ApprovalRecord])
-def list_approvals(store: PlatformStore = Depends(get_store)) -> list[ApprovalRecord]:
-    return store.list_approvals()
+@router.get("", response_model=PageResponse[ApprovalRecord])
+def list_approvals(
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    store: PlatformStore = Depends(get_store),
+) -> PageResponse[ApprovalRecord]:
+    records = store.list_approvals()
+    paged = records[offset : offset + limit]
+    return PageResponse[ApprovalRecord](items=paged, total=len(records), limit=limit, offset=offset)
 
 
 @router.post("/submit", response_model=ApprovalRecord, status_code=status.HTTP_201_CREATED)
