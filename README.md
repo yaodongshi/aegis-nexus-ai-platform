@@ -6,6 +6,8 @@ Team-grade AI infrastructure that unifies model access, key governance, and know
 
 企业级 AI 协作底座，统一模型接入与密钥治理，并保留团队既有开发工具与工作习惯。
 
+完整最新版方案请查看 [TEAM_AI_PLATFORM_FULL_VERSION.md](TEAM_AI_PLATFORM_FULL_VERSION.md)。
+
 ## EN
 
 ### 1. Overview
