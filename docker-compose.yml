@@ -1,0 +1,88 @@
+services:
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    container_name: team-litellm
+    restart: unless-stopped
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "2"]
+    env_file:
+      - .env
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      DATABASE_URL: ${LITELLM_DATABASE_URL}
+      STORE_MODEL_IN_DB: "True"
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      AZURE_API_KEY: ${AZURE_API_KEY}
+      AZURE_API_BASE: ${AZURE_API_BASE}
+      AZURE_API_VERSION: ${AZURE_API_VERSION}
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+      - litellm_data:/app/data
+    ports:
+      - "4000:4000"
+    depends_on:
+      litellm_db:
+        condition: service_healthy
+    networks:
+      - team_ai_net
+
+  litellm_db:
+    image: postgres:16
+    container_name: team-litellm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${LITELLM_DB_USER}
+      POSTGRES_PASSWORD: ${LITELLM_DB_PASSWORD}
+      POSTGRES_DB: ${LITELLM_DB_NAME}
+    ports:
+      - "55432:5432"
+    volumes:
+      - litellm_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LITELLM_DB_USER} -d ${LITELLM_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - team_ai_net
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: team-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - team_ai_net
+
+  open_webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: team-open-webui
+    restart: unless-stopped
+    environment:
+      OPENAI_API_BASE_URL: http://litellm:4000/v1
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
+      WEBUI_AUTH: "True"
+    ports:
+      - "3000:8080"
+    volumes:
+      - open_webui_data:/app/backend/data
+    depends_on:
+      - litellm
+    networks:
+      - team_ai_net
+
+volumes:
+  litellm_data:
+  litellm_db_data:
+  qdrant_data:
+  open_webui_data:
+
+networks:
+  team_ai_net:
+    driver: bridge

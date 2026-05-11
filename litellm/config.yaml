@@ -1,0 +1,43 @@
+model_list:
+  - model_name: gpt-5
+    litellm_params:
+      model: openai/gpt-5
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-4.1
+    litellm_params:
+      model: openai/gpt-4.1
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: claude-sonnet-4
+    litellm_params:
+      model: anthropic/claude-sonnet-4-20250514
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: gemini-2.5-pro
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+
+  - model_name: azure-gpt-4.1
+    litellm_params:
+      model: azure/${AZURE_DEPLOYMENT_GPT41}
+      api_base: os.environ/AZURE_API_BASE
+      api_version: os.environ/AZURE_API_VERSION
+      api_key: os.environ/AZURE_API_KEY
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  alerting: ["slack"]
+  health_check_interval: 300
+
+router_settings:
+  routing_strategy: latency-based-routing
+  num_retries: 2
+  timeout: 60
+  redis_host: null
+
+litellm_settings:
+  drop_params: true
+  request_timeout: 120
+  set_verbose: false
