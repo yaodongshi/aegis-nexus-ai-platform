@@ -27,6 +27,8 @@ from .schemas import (
     ProviderBatchProbeItem,
     ProviderBatchProbeRequest,
     ProviderBatchProbeResponse,
+    ProviderBatchDeleteRequest,
+    ProviderBatchDeleteResponse,
     ProviderBatchUpdateRequest,
     ProviderBatchUpdateResponse,
     ProviderProbeLogRecord,
@@ -1106,6 +1108,26 @@ class PlatformStore:
             total=len(target_ids),
             updated=len(updated_ids),
             updated_ids=updated_ids,
+            skipped_ids=skipped_ids,
+        )
+
+    def batch_delete_providers(self, payload: ProviderBatchDeleteRequest) -> ProviderBatchDeleteResponse:
+        target_ids = payload.provider_ids
+        if not target_ids:
+            raise ValueError("No provider_ids provided")
+
+        deleted_ids: list[str] = []
+        skipped_ids: list[str] = []
+        for provider_id in target_ids:
+            if self.delete_provider(provider_id):
+                deleted_ids.append(provider_id)
+            else:
+                skipped_ids.append(provider_id)
+
+        return ProviderBatchDeleteResponse(
+            total=len(target_ids),
+            deleted=len(deleted_ids),
+            deleted_ids=deleted_ids,
             skipped_ids=skipped_ids,
         )
 

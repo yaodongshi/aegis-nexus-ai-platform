@@ -287,6 +287,44 @@ class TestBackendApp(unittest.TestCase):
         self.assertEqual(verify.json()["scope"], "unified")
         self.assertEqual(verify.json()["apps"], ["open_webui", "codex"])
 
+    def test_provider_batch_delete_endpoint(self) -> None:
+        first = self.client.post(
+            "/api/providers",
+            json={
+                "name": "Batch Delete A",
+                "provider_type": "openai",
+                "base_url": "https://api.openai.com",
+                "api_key": "sk-delete-a-123",
+                "scope": "app",
+                "apps": ["open_webui"],
+                "api_format": "openai",
+                "enabled": True,
+            },
+        )
+        second = self.client.post(
+            "/api/providers",
+            json={
+                "name": "Batch Delete B",
+                "provider_type": "openai",
+                "base_url": "https://api.openai.com",
+                "api_key": "sk-delete-b-123",
+                "scope": "app",
+                "apps": ["open_webui"],
+                "api_format": "openai",
+                "enabled": True,
+            },
+        )
+        p1 = first.json()["id"]
+        p2 = second.json()["id"]
+
+        batch_resp = self.client.post("/api/providers/batch-delete", json={"provider_ids": [p1, p2]})
+        self.assertEqual(batch_resp.status_code, 200)
+        payload = batch_resp.json()
+        self.assertEqual(payload["deleted"], 2)
+
+        verify_deleted = self.client.get(f"/api/providers/{p1}")
+        self.assertEqual(verify_deleted.status_code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()

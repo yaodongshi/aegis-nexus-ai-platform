@@ -371,3 +371,11 @@
 - `enabled`：批量启用/停用
 - `target_apps`：批量更新应用绑定
 - `force_unified`：是否强制设置为统一供应商
+
+### POST /api/providers/batch-delete
+
+批量删除供应商（需传入 provider_ids）。
+
+请求字段：
+
+- `provider_ids`：要删除的供应商 ID 列表

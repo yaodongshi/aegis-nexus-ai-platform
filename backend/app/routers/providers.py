@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from ..provider_presets import PRESET_PROVIDERS
 from ..schemas import (
     PageResponse,
+    ProviderBatchDeleteRequest,
+    ProviderBatchDeleteResponse,
     ProviderBatchProbeRequest,
     ProviderBatchProbeResponse,
     ProviderBatchUpdateRequest,
@@ -141,5 +143,16 @@ def batch_update_providers(
 ) -> ProviderBatchUpdateResponse:
     try:
         return store.batch_update_providers(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post("/batch-delete", response_model=ProviderBatchDeleteResponse)
+def batch_delete_providers(
+    payload: ProviderBatchDeleteRequest,
+    store: PlatformStore = Depends(get_store),
+) -> ProviderBatchDeleteResponse:
+    try:
+        return store.batch_delete_providers(payload)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

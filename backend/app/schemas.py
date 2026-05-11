@@ -295,3 +295,14 @@ class ProviderBatchUpdateResponse(BaseModel):
     updated: int = 0
     updated_ids: list[str] = Field(default_factory=list)
     skipped_ids: list[str] = Field(default_factory=list)
+
+
+class ProviderBatchDeleteRequest(BaseModel):
+    provider_ids: list[str] = Field(default_factory=list)
+
+
+class ProviderBatchDeleteResponse(BaseModel):
+    total: int = 0
+    deleted: int = 0
+    deleted_ids: list[str] = Field(default_factory=list)
+    skipped_ids: list[str] = Field(default_factory=list)
