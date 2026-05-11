@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from itertools import count
 import json
+import logging
 import os
 from time import perf_counter
 from typing import Any
@@ -12,6 +13,7 @@ from uuid import uuid4
 
 import httpx
 import psycopg2
+import yaml
 from psycopg2.extras import Json
 
 from .schemas import (
@@ -796,7 +798,10 @@ class PlatformStore:
                     ),
                 )
                 row = cur.fetchone()
-            return self._provider_from_row(row)
+            result = self._provider_from_row(row)
+            # Sync to litellm config after creating provider
+            self._sync_providers_to_litellm_config()
+            return result
 
         record = ProviderRecord(
             id=provider_id,
@@ -882,7 +887,10 @@ class PlatformStore:
                     ),
                 )
                 row = cur.fetchone()
-            return self._provider_from_row(row)
+            result = self._provider_from_row(row)
+            # Sync to litellm config after updating provider
+            self._sync_providers_to_litellm_config()
+            return result
 
         data = payload.model_dump(exclude_none=True)
         updated = existing.model_copy(update={k: v for k, v in data.items() if k != "api_key"} | {"updated_at": datetime.now(UTC)})
@@ -896,7 +904,11 @@ class PlatformStore:
         if self._db_enabled:
             with self._connect() as conn, conn.cursor() as cur:
                 cur.execute("DELETE FROM backend_providers WHERE provider_id = %s", (provider_id,))
-                return cur.rowcount > 0
+                deleted = cur.rowcount > 0
+            # Sync to litellm config after deleting provider
+            if deleted:
+                self._sync_providers_to_litellm_config()
+            return deleted
         existed = provider_id in self.providers
         self.providers.pop(provider_id, None)
         self.provider_secrets.pop(provider_id, None)
@@ -1544,3 +1556,89 @@ class PlatformStore:
             results=results,
             probed_at=row[4],
         )
+
+    def _sync_providers_to_litellm_config(self) -> None:
+        """Sync enabled providers from backend_providers to litellm/config.yaml"""
+        try:
+            # Get all enabled providers
+            providers = self.list_providers(enabled=True)
+            
+            # Build model_list from providers
+            model_list: list[dict[str, Any]] = []
+            env_vars: dict[str, str] = {}
+
+            for provider in providers:
+                if "open_webui" not in (provider.apps or []):
+                    continue  # Only sync providers that target open_webui
+
+                secret = self._get_provider_secret(provider.id)
+                if not secret:
+                    continue
+
+                # Generate environment variable name
+                env_var_name = f"TEAM_AI_LITELLM_PROVIDER_{provider.id.upper()}_API_KEY"
+                env_vars[env_var_name] = secret
+
+                # Build model name (use preset_key or provider_type)
+                model_name = provider.preset_key or provider.provider_type
+
+                # Infer actual model name from provider type
+                # For deepseek, use common model name
+                actual_model = f"{provider.provider_type}/deepseek-chat" if provider.provider_type == "deepseek" else f"{provider.provider_type}/model"
+
+                model_entry = {
+                    "model_name": model_name,
+                    "litellm_params": {
+                        "model": actual_model,
+                        "api_base": provider.base_url,
+                        "api_key": f"os.environ/{env_var_name}",
+                    },
+                }
+                model_list.append(model_entry)
+
+            # Use /app/litellm as the base path (works in Docker)
+            # In Docker, this will be mounted via volume binding
+            config_path = "/app/litellm/config.yaml"
+            env_path = "/app/litellm/.env.litellm"
+
+            # Fallback to local path if running outside Docker
+            if not os.path.exists(os.path.dirname(config_path)):
+                local_dir = os.path.join(os.path.dirname(__file__), "../../litellm")
+                if os.path.exists(local_dir):
+                    config_path = os.path.join(local_dir, "config.yaml")
+                    env_path = os.path.join(local_dir, ".env.litellm")
+
+            existing_config = {}
+            if os.path.exists(config_path):
+                with open(config_path, "r") as f:
+                    existing_config = yaml.safe_load(f) or {}
+
+            # Keep only static models (those without our provider prefix pattern)
+            # and add new provider models
+            static_models = existing_config.get("model_list", [])
+            provider_ids = {p.id for p in providers}
+            
+            # Filter to keep only models that are NOT from providers
+            static_model_list = [
+                m for m in static_models 
+                if not any(f"TEAM_AI_LITELLM_PROVIDER_{p_id.upper()}" in str(m.get("litellm_params", {}).get("api_key", "")) 
+                          for p_id in provider_ids)
+            ]
+            
+            new_model_list = static_model_list + model_list
+            existing_config["model_list"] = new_model_list
+
+            # Write updated config.yaml
+            with open(config_path, "w") as f:
+                yaml.dump(existing_config, f, default_flow_style=False, sort_keys=False)
+
+            # Write .env.litellm
+            with open(env_path, "w") as f:
+                f.write("# LiteLLM provider API keys - auto-generated by backend\n")
+                f.write("# This file is generated by backend/app/store.py when providers are created/updated\n")
+                for key, value in env_vars.items():
+                    f.write(f"{key}={value}\n")
+
+        except Exception as e:
+            # Log but don't fail the main operation
+            logging.getLogger(__name__).error(f"Failed to sync providers to litellm config: {e}")

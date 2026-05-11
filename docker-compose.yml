@@ -11,6 +11,8 @@ services:
     environment:
       TEAM_AI_PLATFORM_PROJECT_NAME: Aegis Nexus AI Platform
       TEAM_AI_PLATFORM_DB_DSN: ${TEAM_AI_PLATFORM_DB_DSN:-postgresql://litellm:litellm_password_change_me@litellm_db:5432/litellm}
+    volumes:
+      - ./litellm:/app/litellm
     ports:
       - "8000:8000"
     healthcheck:
@@ -31,6 +33,7 @@ services:
     command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "2"]
     env_file:
       - .env
+      - ./litellm/.env.litellm
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
@@ -92,7 +95,7 @@ services:
     environment:
       OPENAI_API_BASE_URL: http://litellm:4000/v1
       OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
-      WEBUI_AUTH: "True"
+      WEBUI_AUTH: "False"
     ports:
       - "${OPEN_WEBUI_PORT:-9000}:8080"
     volumes:
