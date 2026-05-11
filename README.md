@@ -90,6 +90,7 @@ Use Web APIs (Swagger UI) to manage providers instead of editing provider config
 1. Call `POST /api/providers/{provider_id}/probe` to benchmark multiple endpoints and pick fastest
 1. Call `POST /api/providers/probe-all` for batch endpoint probe
 1. Call `GET /api/providers/{provider_id}/probe-history` to view recent probe history
+1. Call `POST /api/providers/batch-update` for batch enable/disable/sync
 
 ### 7. Generate a virtual key
 
@@ -210,6 +211,7 @@ curl -fsS http://localhost:8000/health
 1. 调用 `POST /api/providers/{provider_id}/probe` 对多个端点测速并选择最快端点
 1. 调用 `POST /api/providers/probe-all` 执行批量测速
 1. 调用 `GET /api/providers/{provider_id}/probe-history` 查看测速历史
+1. 调用 `POST /api/providers/batch-update` 执行批量启停/批量同步
 
 ### 7. 生成虚拟 Key
 

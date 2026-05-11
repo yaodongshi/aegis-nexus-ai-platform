@@ -360,3 +360,14 @@
 查询参数：
 
 - `limit`：返回条数上限（1-100）
+
+### POST /api/providers/batch-update
+
+批量更新供应商状态与应用绑定（用于批量启停、批量同步）。
+
+请求字段：
+
+- `provider_ids`：目标供应商 ID 列表（为空时默认作用于全部供应商）
+- `enabled`：批量启用/停用
+- `target_apps`：批量更新应用绑定
+- `force_unified`：是否强制设置为统一供应商

@@ -281,3 +281,17 @@ class ProviderBatchProbeResponse(BaseModel):
     total: int = 0
     succeeded: int = 0
     probed_at: datetime
+
+
+class ProviderBatchUpdateRequest(BaseModel):
+    provider_ids: list[str] = Field(default_factory=list)
+    enabled: bool | None = None
+    target_apps: list[str] | None = None
+    force_unified: bool = False
+
+
+class ProviderBatchUpdateResponse(BaseModel):
+    total: int = 0
+    updated: int = 0
+    updated_ids: list[str] = Field(default_factory=list)
+    skipped_ids: list[str] = Field(default_factory=list)

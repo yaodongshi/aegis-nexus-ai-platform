@@ -27,6 +27,8 @@ from .schemas import (
     ProviderBatchProbeItem,
     ProviderBatchProbeRequest,
     ProviderBatchProbeResponse,
+    ProviderBatchUpdateRequest,
+    ProviderBatchUpdateResponse,
     ProviderProbeLogRecord,
     ProviderModelDiscoveryResponse,
     ProviderProbeRequest,
@@ -1071,6 +1073,40 @@ class PlatformStore:
             total=len(items),
             succeeded=succeeded,
             probed_at=datetime.now(UTC),
+        )
+
+    def batch_update_providers(self, payload: ProviderBatchUpdateRequest) -> ProviderBatchUpdateResponse:
+        if payload.enabled is None and payload.target_apps is None and not payload.force_unified:
+            raise ValueError("No update fields provided")
+
+        target_ids = payload.provider_ids
+        if not target_ids:
+            target_ids = [record.id for record in self.list_providers()]
+
+        updated_ids: list[str] = []
+        skipped_ids: list[str] = []
+        for provider_id in target_ids:
+            provider = self.get_provider(provider_id)
+            if provider is None:
+                skipped_ids.append(provider_id)
+                continue
+
+            update_payload = ProviderUpdateRequest(
+                enabled=payload.enabled if payload.enabled is not None else None,
+                apps=payload.target_apps if payload.target_apps is not None else None,
+                scope="unified" if payload.force_unified else None,
+            )
+            updated = self.update_provider(provider_id, update_payload)
+            if updated is None:
+                skipped_ids.append(provider_id)
+            else:
+                updated_ids.append(provider_id)
+
+        return ProviderBatchUpdateResponse(
+            total=len(target_ids),
+            updated=len(updated_ids),
+            updated_ids=updated_ids,
+            skipped_ids=skipped_ids,
         )
 
     def _next_id(self, prefix: str) -> str:

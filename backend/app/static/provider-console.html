@@ -265,6 +265,11 @@
         <div class="toolbar">
           <h2 style="margin:0;">供应商列表</h2>
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button id="selectVisibleBtn" class="alt">全选可见</button>
+            <button id="clearSelectBtn" class="alt">清空选择</button>
+            <button id="batchEnableBtn" class="alt">批量启用</button>
+            <button id="batchDisableBtn" class="alt">批量停用</button>
+            <button id="batchSyncBtn" class="alt">批量同步应用</button>
             <button id="probeAllBtn" class="alt">批量测速</button>
             <button id="exportBtn" class="alt">导出 JSON</button>
             <button id="importBtn" class="alt">导入 JSON</button>
@@ -300,6 +305,8 @@
 
     let presets = [];
     let providers = [];
+    let visibleProviders = [];
+    let selectedProviderIds = new Set();
     let editingProviderId = null;
 
     function message(text, isError = false) {
@@ -346,7 +353,10 @@
       const stateLabel = provider.enabled ? "enabled" : "disabled";
       div.innerHTML = `
         <div class="item-head">
-          <h3>${provider.name}</h3>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" class="row-select" data-id="${provider.id}" ${selectedProviderIds.has(provider.id) ? "checked" : ""} />
+            <h3>${provider.name}</h3>
+          </div>
           <span class="pill">${provider.scope} · ${stateLabel}</span>
         </div>
         <div class="meta">
@@ -388,7 +398,8 @@
 
     function renderProviders() {
       const filtered = filterProviders(providers);
-      count.textContent = `${filtered.length}/${providers.length} providers`;
+      visibleProviders = filtered;
+      count.textContent = `${filtered.length}/${providers.length} providers · selected ${selectedProviderIds.size}`;
       listBox.innerHTML = "";
       filtered.forEach((item) => listBox.appendChild(row(item)));
     }
@@ -431,7 +442,33 @@
       if (!resp.ok) throw new Error("加载供应商失败");
       const payload = await resp.json();
       providers = payload.items || [];
+      const existingIds = new Set(providers.map((item) => item.id));
+      selectedProviderIds = new Set([...selectedProviderIds].filter((id) => existingIds.has(id)));
       renderProviders();
+    }
+
+    function selectedIds() {
+      return [...selectedProviderIds];
+    }
+
+    async function batchUpdateProviders(updatePayload, successPrefix) {
+      const ids = selectedIds();
+      if (!ids.length) {
+        message("请先选择至少一个供应商", true);
+        return;
+      }
+      const resp = await fetch("/api/providers/batch-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider_ids: ids, ...updatePayload }),
+      });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`批量更新失败: ${detail}`);
+      }
+      const payload = await resp.json();
+      message(`${successPrefix}: ${payload.updated}/${payload.total}`);
+      await loadProviders();
     }
 
     async function addProvider() {
@@ -700,6 +737,31 @@
     document.getElementById("refreshBtn").addEventListener("click", async () => {
       try { await loadProviders(); message("已刷新"); } catch (err) { message(err.message, true); }
     });
+    document.getElementById("selectVisibleBtn").addEventListener("click", () => {
+      visibleProviders.forEach((item) => selectedProviderIds.add(item.id));
+      renderProviders();
+      message(`已选择 ${selectedProviderIds.size} 个供应商`);
+    });
+    document.getElementById("clearSelectBtn").addEventListener("click", () => {
+      selectedProviderIds.clear();
+      renderProviders();
+      message("已清空选择");
+    });
+    document.getElementById("batchEnableBtn").addEventListener("click", async () => {
+      try { await batchUpdateProviders({ enabled: true }, "批量启用完成"); } catch (err) { message(err.message, true); }
+    });
+    document.getElementById("batchDisableBtn").addEventListener("click", async () => {
+      try { await batchUpdateProviders({ enabled: false }, "批量停用完成"); } catch (err) { message(err.message, true); }
+    });
+    document.getElementById("batchSyncBtn").addEventListener("click", async () => {
+      const apps = prompt("批量同步到哪些应用？逗号分隔", "open_webui,codex");
+      if (apps === null) return;
+      try {
+        await batchUpdateProviders({ target_apps: parseApps(apps), force_unified: true }, "批量同步完成");
+      } catch (err) {
+        message(err.message, true);
+      }
+    });
     document.getElementById("probeAllBtn").addEventListener("click", async () => {
       try { await probeAllProviders(); } catch (err) { message(err.message, true); }
     });
@@ -731,6 +793,17 @@
       } catch (err) {
         message(err.message, true);
       }
+    });
+
+    listBox.addEventListener("change", (e) => {
+      const target = e.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      if (!target.classList.contains("row-select")) return;
+      const providerId = target.getAttribute("data-id");
+      if (!providerId) return;
+      if (target.checked) selectedProviderIds.add(providerId);
+      else selectedProviderIds.delete(providerId);
+      renderProviders();
     });
 
     (async function bootstrap() {

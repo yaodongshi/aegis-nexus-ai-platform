@@ -7,6 +7,8 @@ from ..schemas import (
     PageResponse,
     ProviderBatchProbeRequest,
     ProviderBatchProbeResponse,
+    ProviderBatchUpdateRequest,
+    ProviderBatchUpdateResponse,
     ProviderCreateRequest,
     ProviderProbeLogRecord,
     ProviderModelDiscoveryResponse,
@@ -130,3 +132,14 @@ def probe_all_providers(
     store: PlatformStore = Depends(get_store),
 ) -> ProviderBatchProbeResponse:
     return store.batch_probe_providers(payload)
+
+
+@router.post("/batch-update", response_model=ProviderBatchUpdateResponse)
+def batch_update_providers(
+    payload: ProviderBatchUpdateRequest,
+    store: PlatformStore = Depends(get_store),
+) -> ProviderBatchUpdateResponse:
+    try:
+        return store.batch_update_providers(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

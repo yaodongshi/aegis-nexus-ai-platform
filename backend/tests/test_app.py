@@ -238,6 +238,55 @@ class TestBackendApp(unittest.TestCase):
         self.assertEqual(payload["total"], 1)
         self.assertEqual(payload["succeeded"], 1)
 
+    def test_provider_batch_update_endpoint(self) -> None:
+        first = self.client.post(
+            "/api/providers",
+            json={
+                "name": "Batch Update A",
+                "provider_type": "openai",
+                "base_url": "https://api.openai.com",
+                "api_key": "sk-update-a-123",
+                "scope": "app",
+                "apps": ["open_webui"],
+                "api_format": "openai",
+                "enabled": True,
+            },
+        )
+        second = self.client.post(
+            "/api/providers",
+            json={
+                "name": "Batch Update B",
+                "provider_type": "openai",
+                "base_url": "https://api.openai.com",
+                "api_key": "sk-update-b-123",
+                "scope": "app",
+                "apps": ["open_webui"],
+                "api_format": "openai",
+                "enabled": True,
+            },
+        )
+        p1 = first.json()["id"]
+        p2 = second.json()["id"]
+
+        batch_resp = self.client.post(
+            "/api/providers/batch-update",
+            json={
+                "provider_ids": [p1, p2],
+                "enabled": False,
+                "target_apps": ["open_webui", "codex"],
+                "force_unified": True,
+            },
+        )
+        self.assertEqual(batch_resp.status_code, 200)
+        payload = batch_resp.json()
+        self.assertEqual(payload["updated"], 2)
+
+        verify = self.client.get(f"/api/providers/{p1}")
+        self.assertEqual(verify.status_code, 200)
+        self.assertFalse(verify.json()["enabled"])
+        self.assertEqual(verify.json()["scope"], "unified")
+        self.assertEqual(verify.json()["apps"], ["open_webui", "codex"])
+
 
 if __name__ == "__main__":
     unittest.main()
