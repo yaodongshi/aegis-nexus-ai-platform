@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from .core.config import get_settings
-from .routers import approvals, health, keys, models, policies, providers, sessions, skills
+from .routers import approvals, health, keys, models, policies, provider_console, providers, sessions, skills
 from .store import PlatformStore
 
 
@@ -20,6 +20,7 @@ settings = get_settings()
 app = FastAPI(title=settings.project_name, lifespan=lifespan)
 
 app.include_router(health.router)
+app.include_router(provider_console.router)
 app.include_router(models.router)
 app.include_router(keys.router)
 app.include_router(providers.router)

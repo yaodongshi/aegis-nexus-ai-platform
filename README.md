@@ -67,6 +67,7 @@ curl -fsS http://localhost:8000/health
 - Open WebUI: `http://localhost:9000`
 - Qdrant: `http://localhost:6333`
 - Backend API docs: `http://localhost:8000/docs`
+- Provider Console UI: `http://localhost:8000/provider-console`
 
 ### 6.1 Provider management on Web
 
@@ -174,6 +175,7 @@ curl -fsS http://localhost:8000/health
 - Open WebUI: `http://localhost:9000`
 - Qdrant: `http://localhost:6333`
 - Backend API 文档: `http://localhost:8000/docs`
+- Provider Console 页面: `http://localhost:8000/provider-console`
 
 ### 6.1 在 Web 上管理供应商
 

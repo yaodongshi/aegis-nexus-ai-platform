@@ -96,6 +96,11 @@ class TestBackendApp(unittest.TestCase):
         self.assertGreaterEqual(payload["total"], 1)
         self.assertTrue(payload["items"])
 
+    def test_provider_console_page(self) -> None:
+        response = self.client.get("/provider-console")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Provider Console", response.text)
+
 
 if __name__ == "__main__":
     unittest.main()

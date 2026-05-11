@@ -1,4 +1,4 @@
-from . import approvals, health, keys, models, policies, providers, sessions, skills
+from . import approvals, health, keys, models, policies, provider_console, providers, sessions, skills
 
 __all__ = [
     "approvals",
@@ -6,6 +6,7 @@ __all__ = [
     "keys",
     "models",
     "policies",
+    "provider_console",
     "providers",
     "sessions",
     "skills",

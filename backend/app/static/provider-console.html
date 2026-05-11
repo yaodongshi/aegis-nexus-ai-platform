@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Provider Console</title>
+  <style>
+    :root {
+      --bg: #f6f3ea;
+      --panel: #fffdfa;
+      --ink: #1e1f1a;
+      --muted: #686a61;
+      --brand: #005f73;
+      --brand-2: #0a9396;
+      --warn: #bb3e03;
+      --ring: rgba(10, 147, 150, 0.25);
+      --line: #d6d2c4;
+      --ok: #2f6b35;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Segoe UI", "PingFang SC", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 20% -10%, #e9f5f4 0%, transparent 40%),
+        radial-gradient(circle at 100% 0%, #fde6cf 0%, transparent 30%),
+        var(--bg);
+      min-height: 100vh;
+    }
+
+    .wrap {
+      width: min(1200px, 94vw);
+      margin: 28px auto 56px;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, var(--brand), var(--brand-2));
+      color: #f5fffe;
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0, 95, 115, 0.2);
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(24px, 3vw, 36px);
+      letter-spacing: 0.4px;
+    }
+
+    .hero p {
+      margin: 10px 0 0;
+      opacity: 0.94;
+      line-height: 1.5;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    @media (max-width: 920px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 6px 14px rgba(30, 31, 26, 0.05);
+    }
+
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+
+    .row { margin-bottom: 10px; }
+
+    label {
+      display: block;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 14px;
+      outline: none;
+      transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--brand-2);
+      box-shadow: 0 0 0 3px var(--ring);
+    }
+
+    .btns {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    button {
+      border: none;
+      background: var(--brand);
+      color: #fff;
+      padding: 10px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    button.alt { background: #3f3f3a; }
+    button.warn { background: var(--warn); }
+
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      background: #ecf8f8;
+      color: #0b5d60;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      display: inline-block;
+    }
+
+    .list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .item {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      background: #fff;
+    }
+
+    .item-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .item h3 {
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 6px;
+      line-height: 1.45;
+      word-break: break-all;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .muted { color: var(--muted); }
+    .ok { color: var(--ok); }
+
+    #toast {
+      margin-top: 12px;
+      font-size: 13px;
+      min-height: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>Provider Console</h1>
+      <p>在 Web 里直接管理大模型供应商：预设、统一供应商、自动获取模型，一次配置给多个应用同步。</p>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <h2>新增供应商</h2>
+        <div class="row">
+          <label for="preset">预设</label>
+          <select id="preset"></select>
+        </div>
+        <div class="row">
+          <label for="name">名称</label>
+          <input id="name" placeholder="例如 OpenAI Prod" />
+        </div>
+        <div class="row">
+          <label for="providerType">类型</label>
+          <input id="providerType" placeholder="例如 openai" />
+        </div>
+        <div class="row">
+          <label for="baseUrl">端点</label>
+          <input id="baseUrl" placeholder="https://api.openai.com" />
+        </div>
+        <div class="row">
+          <label for="apiKey">API Key</label>
+          <input id="apiKey" type="password" placeholder="sk-..." />
+        </div>
+        <div class="row">
+          <label for="scope">范围</label>
+          <select id="scope">
+            <option value="app">应用专属</option>
+            <option value="unified">统一供应商</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="apps">绑定应用（逗号分隔）</label>
+          <input id="apps" placeholder="open_webui,codex,claude" />
+        </div>
+        <div class="row">
+          <label for="notes">备注</label>
+          <textarea id="notes" rows="3" placeholder="可写套餐/用途/到期时间"></textarea>
+        </div>
+        <div class="btns">
+          <button id="addBtn">新增供应商</button>
+          <button id="refreshBtn" class="alt">刷新列表</button>
+        </div>
+        <div id="toast" class="muted"></div>
+      </section>
+
+      <section class="card">
+        <div class="toolbar">
+          <h2 style="margin:0;">供应商列表</h2>
+          <span id="count" class="pill">0 providers</span>
+        </div>
+        <div id="list" class="list"></div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const presetSelect = document.getElementById("preset");
+    const nameInput = document.getElementById("name");
+    const providerTypeInput = document.getElementById("providerType");
+    const baseUrlInput = document.getElementById("baseUrl");
+    const apiKeyInput = document.getElementById("apiKey");
+    const scopeInput = document.getElementById("scope");
+    const appsInput = document.getElementById("apps");
+    const notesInput = document.getElementById("notes");
+    const toast = document.getElementById("toast");
+    const listBox = document.getElementById("list");
+    const count = document.getElementById("count");
+
+    let presets = [];
+
+    function message(text, isError = false) {
+      toast.textContent = text;
+      toast.className = isError ? "" : "ok";
+      if (isError) toast.style.color = "#bb3e03";
+      else toast.style.color = "#2f6b35";
+    }
+
+    function parseApps(value) {
+      return value
+        .split(",")
+        .map(v => v.trim())
+        .filter(Boolean);
+    }
+
+    function pickPreset(key) {
+      const target = presets.find(item => item.key === key);
+      if (!target) return;
+      providerTypeInput.value = target.provider_type;
+      baseUrlInput.value = target.default_base_url;
+      if (!nameInput.value) nameInput.value = target.name;
+      if (!appsInput.value) appsInput.value = (target.suggested_apps || []).join(",");
+    }
+
+    async function loadPresets() {
+      const resp = await fetch("/api/providers/presets");
+      if (!resp.ok) throw new Error("加载预设失败");
+      presets = await resp.json();
+      presetSelect.innerHTML = "";
+      presets.forEach(item => {
+        const opt = document.createElement("option");
+        opt.value = item.key;
+        opt.textContent = `${item.name} (${item.provider_type})`;
+        presetSelect.appendChild(opt);
+      });
+      if (presets.length > 0) pickPreset(presets[0].key);
+    }
+
+    function row(provider) {
+      const div = document.createElement("div");
+      div.className = "item";
+      const apps = (provider.apps || []).join(", ") || "-";
+      div.innerHTML = `
+        <div class="item-head">
+          <h3>${provider.name}</h3>
+          <span class="pill">${provider.scope}</span>
+        </div>
+        <div class="meta">
+          <div><strong>Type:</strong> ${provider.provider_type}</div>
+          <div><strong>Base:</strong> ${provider.base_url}</div>
+          <div><strong>Apps:</strong> ${apps}</div>
+          <div><strong>Key:</strong> ${provider.api_key_masked || "-"}</div>
+        </div>
+        <div class="actions">
+          <button data-op="discover" data-id="${provider.id}">获取模型</button>
+          <button data-op="sync" data-id="${provider.id}" class="alt">保存并同步</button>
+          <button data-op="delete" data-id="${provider.id}" class="warn">删除</button>
+        </div>
+      `;
+      return div;
+    }
+
+    async function loadProviders() {
+      const resp = await fetch("/api/providers?limit=200&offset=0");
+      if (!resp.ok) throw new Error("加载供应商失败");
+      const payload = await resp.json();
+      const items = payload.items || [];
+      count.textContent = `${payload.total || 0} providers`;
+      listBox.innerHTML = "";
+      items.forEach(item => listBox.appendChild(row(item)));
+    }
+
+    async function addProvider() {
+      const body = {
+        name: nameInput.value.trim(),
+        provider_type: providerTypeInput.value.trim(),
+        base_url: baseUrlInput.value.trim(),
+        api_key: apiKeyInput.value.trim(),
+        preset_key: presetSelect.value || null,
+        scope: scopeInput.value,
+        apps: parseApps(appsInput.value),
+        api_format: "openai",
+        notes: notesInput.value.trim() || null,
+        enabled: true,
+        metadata: {},
+      };
+      if (!body.name || !body.provider_type || !body.base_url || !body.api_key) {
+        message("请填写名称/类型/端点/API Key", true);
+        return;
+      }
+      const resp = await fetch("/api/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`新增失败: ${detail}`);
+      }
+      apiKeyInput.value = "";
+      message("新增成功");
+      await loadProviders();
+    }
+
+    async function discover(providerId) {
+      const resp = await fetch(`/api/providers/${providerId}/discover-models`, { method: "POST" });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`获取模型失败: ${detail}`);
+      }
+      const payload = await resp.json();
+      message(`发现 ${payload.models.length} 个模型: ${payload.models.slice(0, 8).join(", ")}`);
+    }
+
+    async function syncProvider(providerId) {
+      const apps = prompt("同步到哪些应用？逗号分隔", "open_webui,codex");
+      if (apps === null) return;
+      const resp = await fetch(`/api/providers/${providerId}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_apps: parseApps(apps) }),
+      });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`同步失败: ${detail}`);
+      }
+      message("同步成功");
+      await loadProviders();
+    }
+
+    async function removeProvider(providerId) {
+      if (!confirm("确认删除这个供应商？")) return;
+      const resp = await fetch(`/api/providers/${providerId}`, { method: "DELETE" });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`删除失败: ${detail}`);
+      }
+      message("删除成功");
+      await loadProviders();
+    }
+
+    presetSelect.addEventListener("change", (e) => pickPreset(e.target.value));
+    document.getElementById("addBtn").addEventListener("click", async () => {
+      try { await addProvider(); } catch (err) { message(err.message, true); }
+    });
+    document.getElementById("refreshBtn").addEventListener("click", async () => {
+      try { await loadProviders(); message("已刷新"); } catch (err) { message(err.message, true); }
+    });
+
+    listBox.addEventListener("click", async (e) => {
+      const btn = e.target.closest("button[data-op]");
+      if (!btn) return;
+      const op = btn.getAttribute("data-op");
+      const id = btn.getAttribute("data-id");
+      try {
+        if (op === "discover") await discover(id);
+        if (op === "sync") await syncProvider(id);
+        if (op === "delete") await removeProvider(id);
+      } catch (err) {
+        message(err.message, true);
+      }
+    });
+
+    (async function bootstrap() {
+      try {
+        await loadPresets();
+        await loadProviders();
+        message("Provider Console ready");
+      } catch (err) {
+        message(err.message, true);
+      }
+    })();
+  </script>
+</body>
+</html>
