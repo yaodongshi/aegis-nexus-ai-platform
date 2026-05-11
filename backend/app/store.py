@@ -24,6 +24,10 @@ from .schemas import (
     ModelRegisterRequest,
     ModelUpdateRequest,
     ProviderCreateRequest,
+    ProviderBatchProbeItem,
+    ProviderBatchProbeRequest,
+    ProviderBatchProbeResponse,
+    ProviderProbeLogRecord,
     ProviderModelDiscoveryResponse,
     ProviderProbeRequest,
     ProviderProbeResponse,
@@ -53,6 +57,7 @@ class PlatformStore:
     approvals: dict[str, ApprovalRecord] = field(default_factory=dict)
     providers: dict[str, ProviderRecord] = field(default_factory=dict)
     provider_secrets: dict[str, str] = field(default_factory=dict)
+    provider_probe_logs: dict[str, list[ProviderProbeLogRecord]] = field(default_factory=dict)
     _model_seq: count = field(default_factory=lambda: count(1))
     _key_seq: count = field(default_factory=lambda: count(1))
     _skill_seq: count = field(default_factory=lambda: count(1))
@@ -60,6 +65,7 @@ class PlatformStore:
     _policy_seq: count = field(default_factory=lambda: count(1))
     _approval_seq: count = field(default_factory=lambda: count(1))
     _provider_seq: count = field(default_factory=lambda: count(1))
+    _provider_probe_seq: count = field(default_factory=lambda: count(1))
 
     def __post_init__(self) -> None:
         if self.db_dsn is None:
@@ -979,10 +985,91 @@ class PlatformStore:
         usable = [item for item in results if item.ok and item.latency_ms is not None]
         usable.sort(key=lambda item: item.latency_ms or 10**9)
         best_endpoint = usable[0].endpoint if usable else None
-        return ProviderProbeResponse(
+        response = ProviderProbeResponse(
             provider_id=provider_id,
             best_endpoint=best_endpoint,
             results=results,
+            probed_at=datetime.now(UTC),
+        )
+        self._record_provider_probe(response)
+        return response
+
+    def list_provider_probe_logs(self, provider_id: str, limit: int = 20) -> list[ProviderProbeLogRecord]:
+        if self.get_provider(provider_id) is None:
+            raise ValueError("Provider not found")
+
+        safe_limit = max(1, min(limit, 100))
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT log_id, provider_id, best_endpoint, results, probed_at
+                    FROM backend_provider_probe_logs
+                    WHERE provider_id = %s
+                    ORDER BY probed_at DESC
+                    LIMIT %s
+                    """,
+                    (provider_id, safe_limit),
+                )
+                rows = cur.fetchall()
+            return [self._provider_probe_log_from_row(row) for row in rows]
+
+        logs = self.provider_probe_logs.get(provider_id, [])
+        return logs[:safe_limit]
+
+    def batch_probe_providers(self, payload: ProviderBatchProbeRequest) -> ProviderBatchProbeResponse:
+        target_ids = payload.provider_ids
+        if not target_ids:
+            target_ids = [record.id for record in self.list_providers(enabled=True)]
+
+        items: list[ProviderBatchProbeItem] = []
+        succeeded = 0
+        for provider_id in target_ids:
+            provider = self.get_provider(provider_id)
+            if provider is None:
+                items.append(
+                    ProviderBatchProbeItem(
+                        provider_id=provider_id,
+                        provider_name="unknown",
+                        best_endpoint=None,
+                        applied=False,
+                        results=[
+                            ProviderProbeResult(
+                                endpoint="",
+                                ok=False,
+                                status_code=None,
+                                latency_ms=None,
+                                error="Provider not found",
+                            )
+                        ],
+                    )
+                )
+                continue
+
+            probe = self.probe_provider_endpoints(
+                provider_id,
+                ProviderProbeRequest(endpoints=[provider.base_url], timeout_ms=payload.timeout_ms),
+            )
+            applied = False
+            if payload.apply_best_endpoint and probe.best_endpoint and probe.best_endpoint != provider.base_url:
+                updated = self.update_provider(provider_id, ProviderUpdateRequest(base_url=probe.best_endpoint))
+                applied = updated is not None
+            if probe.best_endpoint:
+                succeeded += 1
+            items.append(
+                ProviderBatchProbeItem(
+                    provider_id=provider_id,
+                    provider_name=provider.name,
+                    best_endpoint=probe.best_endpoint,
+                    applied=applied,
+                    results=probe.results,
+                )
+            )
+
+        return ProviderBatchProbeResponse(
+            items=items,
+            total=len(items),
+            succeeded=succeeded,
             probed_at=datetime.now(UTC),
         )
 
@@ -997,6 +1084,7 @@ class PlatformStore:
             "policy": self._policy_seq,
             "approval": self._approval_seq,
             "provider": self._provider_seq,
+            "provider_probe": self._provider_probe_seq,
         }
         return f"{prefix}_{next(seq_map[prefix])}"
 
@@ -1180,6 +1268,23 @@ class PlatformStore:
                 ON backend_providers(scope, enabled, created_at DESC)
                 """
             )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS backend_provider_probe_logs (
+                    log_id TEXT PRIMARY KEY,
+                    provider_id TEXT NOT NULL,
+                    best_endpoint TEXT,
+                    results JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    probed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_backend_provider_probe_logs_provider_time
+                ON backend_provider_probe_logs(provider_id, probed_at DESC)
+                """
+            )
 
     @staticmethod
     def _model_from_row(row: tuple[Any, ...]) -> ModelRecord:
@@ -1315,4 +1420,60 @@ class PlatformStore:
             api_key_masked=self._mask_key(api_key) if api_key else None,
             created_at=row[12],
             updated_at=row[13],
+        )
+
+    def _record_provider_probe(self, payload: ProviderProbeResponse) -> None:
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO backend_provider_probe_logs (
+                        log_id, provider_id, best_endpoint, results, probed_at
+                    ) VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (
+                        self._next_id("provider_probe"),
+                        payload.provider_id,
+                        payload.best_endpoint,
+                        Json([item.model_dump() for item in payload.results]),
+                        payload.probed_at,
+                    ),
+                )
+            return
+
+        log = ProviderProbeLogRecord(
+            id=self._next_id("provider_probe"),
+            provider_id=payload.provider_id,
+            best_endpoint=payload.best_endpoint,
+            results=payload.results,
+            probed_at=payload.probed_at,
+        )
+        logs = self.provider_probe_logs.setdefault(payload.provider_id, [])
+        logs.insert(0, log)
+        if len(logs) > 100:
+            del logs[100:]
+
+    @staticmethod
+    def _probe_result_from_dict(data: dict[str, Any]) -> ProviderProbeResult:
+        return ProviderProbeResult(
+            endpoint=str(data.get("endpoint", "")),
+            ok=bool(data.get("ok", False)),
+            status_code=data.get("status_code"),
+            latency_ms=data.get("latency_ms"),
+            error=data.get("error"),
+        )
+
+    def _provider_probe_log_from_row(self, row: tuple[Any, ...]) -> ProviderProbeLogRecord:
+        raw_results = row[3] if isinstance(row[3], list) else []
+        results = [
+            self._probe_result_from_dict(item)
+            for item in raw_results
+            if isinstance(item, dict)
+        ]
+        return ProviderProbeLogRecord(
+            id=row[0],
+            provider_id=row[1],
+            best_endpoint=row[2],
+            results=results,
+            probed_at=row[4],
         )

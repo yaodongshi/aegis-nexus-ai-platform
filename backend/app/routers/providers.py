@@ -5,7 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from ..provider_presets import PRESET_PROVIDERS
 from ..schemas import (
     PageResponse,
+    ProviderBatchProbeRequest,
+    ProviderBatchProbeResponse,
     ProviderCreateRequest,
+    ProviderProbeLogRecord,
     ProviderModelDiscoveryResponse,
     ProviderProbeRequest,
     ProviderProbeResponse,
@@ -107,3 +110,23 @@ def probe_provider_endpoints(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to probe provider endpoints") from exc
+
+
+@router.get("/{provider_id}/probe-history", response_model=list[ProviderProbeLogRecord])
+def list_provider_probe_history(
+    provider_id: str,
+    limit: int = Query(default=20, ge=1, le=100),
+    store: PlatformStore = Depends(get_store),
+) -> list[ProviderProbeLogRecord]:
+    try:
+        return store.list_provider_probe_logs(provider_id, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post("/probe-all", response_model=ProviderBatchProbeResponse)
+def probe_all_providers(
+    payload: ProviderBatchProbeRequest,
+    store: PlatformStore = Depends(get_store),
+) -> ProviderBatchProbeResponse:
+    return store.batch_probe_providers(payload)

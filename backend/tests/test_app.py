@@ -167,6 +167,77 @@ class TestBackendApp(unittest.TestCase):
         self.assertEqual(payload["best_endpoint"], "https://fast.example.com")
         self.assertEqual(len(payload["results"]), 2)
 
+    def test_provider_probe_history_endpoint(self) -> None:
+        create_resp = self.client.post(
+            "/api/providers",
+            json={
+                "name": "History Provider",
+                "provider_type": "openai",
+                "base_url": "https://api.openai.com",
+                "api_key": "sk-history-123456",
+                "scope": "app",
+                "apps": ["open_webui"],
+                "api_format": "openai",
+                "enabled": True,
+            },
+        )
+        provider_id = create_resp.json()["id"]
+
+        with patch("backend.app.store.PlatformStore.list_provider_probe_logs", return_value=[]):
+            history_resp = self.client.get(f"/api/providers/{provider_id}/probe-history", params={"limit": 5})
+
+        self.assertEqual(history_resp.status_code, 200)
+        self.assertEqual(history_resp.json(), [])
+
+    def test_provider_probe_all_endpoint(self) -> None:
+        create_resp = self.client.post(
+            "/api/providers",
+            json={
+                "name": "Batch Probe Provider",
+                "provider_type": "openai",
+                "base_url": "https://api.openai.com",
+                "api_key": "sk-batch-123456",
+                "scope": "app",
+                "apps": ["open_webui"],
+                "api_format": "openai",
+                "enabled": True,
+            },
+        )
+        provider_id = create_resp.json()["id"]
+
+        with patch("backend.app.store.PlatformStore.batch_probe_providers") as mocked:
+            mocked.return_value = {
+                "items": [
+                    {
+                        "provider_id": provider_id,
+                        "provider_name": "Batch Probe Provider",
+                        "best_endpoint": "https://api.openai.com",
+                        "applied": False,
+                        "results": [
+                            {
+                                "endpoint": "https://api.openai.com",
+                                "ok": True,
+                                "status_code": 200,
+                                "latency_ms": 150,
+                                "error": None,
+                            }
+                        ],
+                    }
+                ],
+                "total": 1,
+                "succeeded": 1,
+                "probed_at": datetime.now(UTC).isoformat(),
+            }
+            batch_resp = self.client.post(
+                "/api/providers/probe-all",
+                json={"provider_ids": [provider_id], "timeout_ms": 5000, "apply_best_endpoint": False},
+            )
+
+        self.assertEqual(batch_resp.status_code, 200)
+        payload = batch_resp.json()
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual(payload["succeeded"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

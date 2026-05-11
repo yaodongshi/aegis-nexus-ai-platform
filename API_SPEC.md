@@ -342,3 +342,21 @@
 
 - `best_endpoint`：最快且可用的端点
 - `results`：每个端点的测速结果（`ok`、`latency_ms`、`status_code`、`error`）
+
+### POST /api/providers/probe-all
+
+批量测速：对多个供应商执行测速，可选自动应用最快端点。
+
+请求字段：
+
+- `provider_ids`：要测速的供应商 ID 列表（为空时默认测速全部启用供应商）
+- `timeout_ms`：超时配置
+- `apply_best_endpoint`：是否自动应用最快端点
+
+### GET /api/providers/{id}/probe-history
+
+查询单个供应商最近测速历史。
+
+查询参数：
+
+- `limit`：返回条数上限（1-100）

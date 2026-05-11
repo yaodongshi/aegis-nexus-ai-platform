@@ -88,6 +88,8 @@ Use Web APIs (Swagger UI) to manage providers instead of editing provider config
 1. Call `POST /api/providers/{provider_id}/discover-models` to auto-fetch `/v1/models`
 1. Call `POST /api/providers/{provider_id}/sync` to sync as unified provider
 1. Call `POST /api/providers/{provider_id}/probe` to benchmark multiple endpoints and pick fastest
+1. Call `POST /api/providers/probe-all` for batch endpoint probe
+1. Call `GET /api/providers/{provider_id}/probe-history` to view recent probe history
 
 ### 7. Generate a virtual key
 
@@ -206,6 +208,8 @@ curl -fsS http://localhost:8000/health
 1. 调用 `POST /api/providers/{provider_id}/discover-models` 自动获取 `/v1/models`
 1. 调用 `POST /api/providers/{provider_id}/sync` 作为统一供应商同步到目标应用
 1. 调用 `POST /api/providers/{provider_id}/probe` 对多个端点测速并选择最快端点
+1. 调用 `POST /api/providers/probe-all` 执行批量测速
+1. 调用 `GET /api/providers/{provider_id}/probe-history` 查看测速历史
 
 ### 7. 生成虚拟 Key
 

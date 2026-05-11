@@ -265,6 +265,7 @@
         <div class="toolbar">
           <h2 style="margin:0;">供应商列表</h2>
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button id="probeAllBtn" class="alt">批量测速</button>
             <button id="exportBtn" class="alt">导出 JSON</button>
             <button id="importBtn" class="alt">导入 JSON</button>
             <span id="count" class="pill">0 providers</span>
@@ -358,6 +359,7 @@
           <button data-op="edit" data-id="${provider.id}" class="alt">编辑</button>
           <button data-op="toggle" data-id="${provider.id}" class="alt">${provider.enabled ? "停用" : "启用"}</button>
           <button data-op="probe" data-id="${provider.id}" class="alt">测速</button>
+          <button data-op="history" data-id="${provider.id}" class="alt">历史</button>
           <button data-op="discover" data-id="${provider.id}">获取模型</button>
           <button data-op="sync" data-id="${provider.id}" class="alt">保存并同步</button>
           <button data-op="delete" data-id="${provider.id}" class="warn">删除</button>
@@ -578,6 +580,50 @@
       message("测速完成");
     }
 
+    async function probeAllProviders() {
+      const apply = confirm("批量测速后是否自动应用每个供应商的最快端点？");
+      const resp = await fetch("/api/providers/probe-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider_ids: [], timeout_ms: 6000, apply_best_endpoint: apply }),
+      });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`批量测速失败: ${detail}`);
+      }
+      const payload = await resp.json();
+      const lines = (payload.items || []).slice(0, 8).map((item) => {
+        const first = item.results && item.results[0] ? item.results[0] : null;
+        const latency = first && first.latency_ms !== null ? `${first.latency_ms}ms` : "-";
+        return `${item.provider_name}: ${item.best_endpoint || "none"} (${latency})${item.applied ? " [applied]" : ""}`;
+      });
+      message(`批量测速完成 ${payload.succeeded}/${payload.total}。${lines.join(" | ")}`);
+      await loadProviders();
+    }
+
+    async function showProbeHistory(providerId) {
+      const resp = await fetch(`/api/providers/${providerId}/probe-history?limit=5`);
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`读取历史失败: ${detail}`);
+      }
+      const payload = await resp.json();
+      const panel = document.getElementById(`probe-${providerId}`);
+      if (!panel) return;
+      if (!payload.length) {
+        panel.textContent = "暂无测速历史";
+        panel.classList.remove("hidden");
+        return;
+      }
+      const rows = payload.map((item) => {
+        const first = item.results && item.results[0] ? item.results[0] : null;
+        const latency = first && first.latency_ms !== null ? `${first.latency_ms}ms` : "-";
+        return `${item.probed_at} | best=${item.best_endpoint || "none"} | ${latency}`;
+      });
+      panel.textContent = rows.join("\n");
+      panel.classList.remove("hidden");
+    }
+
     async function toggleProvider(providerId) {
       const target = providers.find((item) => item.id === providerId);
       if (!target) return;
@@ -654,6 +700,9 @@
     document.getElementById("refreshBtn").addEventListener("click", async () => {
       try { await loadProviders(); message("已刷新"); } catch (err) { message(err.message, true); }
     });
+    document.getElementById("probeAllBtn").addEventListener("click", async () => {
+      try { await probeAllProviders(); } catch (err) { message(err.message, true); }
+    });
     document.getElementById("exportBtn").addEventListener("click", () => {
       try { exportProviders(); } catch (err) { message(err.message, true); }
     });
@@ -678,6 +727,7 @@
         if (op === "edit") startEdit(id);
         if (op === "toggle") await toggleProvider(id);
         if (op === "probe") await probeProvider(id);
+        if (op === "history") await showProbeHistory(id);
       } catch (err) {
         message(err.message, true);
       }

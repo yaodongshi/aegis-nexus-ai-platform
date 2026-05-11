@@ -252,3 +252,32 @@ class ProviderProbeResponse(BaseModel):
     best_endpoint: str | None = None
     results: list[ProviderProbeResult] = Field(default_factory=list)
     probed_at: datetime
+
+
+class ProviderProbeLogRecord(BaseModel):
+    id: str
+    provider_id: str
+    best_endpoint: str | None = None
+    results: list[ProviderProbeResult] = Field(default_factory=list)
+    probed_at: datetime
+
+
+class ProviderBatchProbeRequest(BaseModel):
+    provider_ids: list[str] = Field(default_factory=list)
+    timeout_ms: int = 5000
+    apply_best_endpoint: bool = False
+
+
+class ProviderBatchProbeItem(BaseModel):
+    provider_id: str
+    provider_name: str
+    best_endpoint: str | None = None
+    applied: bool = False
+    results: list[ProviderProbeResult] = Field(default_factory=list)
+
+
+class ProviderBatchProbeResponse(BaseModel):
+    items: list[ProviderBatchProbeItem] = Field(default_factory=list)
+    total: int = 0
+    succeeded: int = 0
+    probed_at: datetime
