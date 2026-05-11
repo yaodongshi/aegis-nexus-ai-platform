@@ -83,14 +83,13 @@ class PlatformStore:
                 created_at=now,
                 updated_at=now,
             )
-        self.policies["default-approval"] = PolicyRecord(
-            id=self._next_id("policy"),
-            name="default-approval",
-            type="approval",
-            rules={"actions": ["db_migrate", "prod_deploy"]},
-            status="active",
-            created_at=now,
-            updated_at=now,
+        self.upsert_policy(
+            PolicyUpsertRequest(
+                name="default-approval",
+                type="approval",
+                rules={"actions": ["db_migrate", "prod_deploy"]},
+                status="active",
+            )
         )
 
     def list_models(
@@ -356,6 +355,31 @@ class PlatformStore:
         skill_id = self._next_id("skill")
         metadata = {"package_name": payload.package_name, "skill_yaml": payload.skill_yaml}
         policy = self._parse_json_like(payload.policy_json)
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO backend_skills (
+                        skill_id, name, version, owner_id, metadata,
+                        policy, dependencies, signature, status, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        skill_id,
+                        payload.package_name,
+                        payload.version,
+                        None,
+                        Json(metadata),
+                        Json(policy),
+                        Json([]),
+                        sha256(f"{payload.package_name}:{payload.version}".encode("utf-8")).hexdigest(),
+                        "dev",
+                        now,
+                        now,
+                    ),
+                )
+            return SkillPublishResponse(skill_id=skill_id, version=payload.version, lifecycle_status="dev")
+
         record = SkillRecord(
             id=skill_id,
             name=payload.package_name,
@@ -373,12 +397,51 @@ class PlatformStore:
         return SkillPublishResponse(skill_id=skill_id, version=payload.version, lifecycle_status=record.status)
 
     def list_skills(self) -> list[SkillRecord]:
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT skill_id, name, version, owner_id, metadata, policy,
+                           dependencies, signature, status, created_at, updated_at
+                    FROM backend_skills ORDER BY created_at DESC
+                    """
+                )
+                rows = cur.fetchall()
+            return [self._skill_from_row(row) for row in rows]
         return list(self.skills.values())
 
     def get_skill(self, skill_id: str) -> SkillRecord | None:
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT skill_id, name, version, owner_id, metadata, policy,
+                           dependencies, signature, status, created_at, updated_at
+                    FROM backend_skills WHERE skill_id = %s
+                    """,
+                    (skill_id,),
+                )
+                row = cur.fetchone()
+            return self._skill_from_row(row) if row else None
         return self.skills.get(skill_id)
 
     def rollback_skill(self, skill_id: str) -> SkillRecord | None:
+        if self._db_enabled:
+            updated_at = datetime.now(UTC)
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE backend_skills
+                    SET status = 'rollback', updated_at = %s
+                    WHERE skill_id = %s
+                    RETURNING skill_id, name, version, owner_id, metadata, policy,
+                              dependencies, signature, status, created_at, updated_at
+                    """,
+                    (updated_at, skill_id),
+                )
+                row = cur.fetchone()
+            return self._skill_from_row(row) if row else None
+
         record = self.skills.get(skill_id)
         if record is None:
             return None
@@ -389,6 +452,32 @@ class PlatformStore:
     def create_session(self, payload: SessionCreateRequest) -> SessionRecord:
         now = datetime.now(UTC)
         session_id = self._next_id("session")
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO backend_sessions (
+                        session_id, user_id, project_id, title, summary,
+                        memory_vector_id, status, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING session_id, user_id, project_id, title, summary,
+                              memory_vector_id, status, created_at, updated_at
+                    """,
+                    (
+                        session_id,
+                        payload.user_id,
+                        payload.project_id,
+                        payload.title,
+                        payload.summary,
+                        None,
+                        "active",
+                        now,
+                        now,
+                    ),
+                )
+                row = cur.fetchone()
+            return self._session_from_row(row)
+
         record = SessionRecord(
             id=session_id,
             user_id=payload.user_id,
@@ -404,12 +493,63 @@ class PlatformStore:
         return record
 
     def list_sessions(self) -> list[SessionRecord]:
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT session_id, user_id, project_id, title, summary,
+                           memory_vector_id, status, created_at, updated_at
+                    FROM backend_sessions ORDER BY created_at DESC
+                    """
+                )
+                rows = cur.fetchall()
+            return [self._session_from_row(row) for row in rows]
         return list(self.sessions.values())
 
     def get_session(self, session_id: str) -> SessionRecord | None:
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT session_id, user_id, project_id, title, summary,
+                           memory_vector_id, status, created_at, updated_at
+                    FROM backend_sessions WHERE session_id = %s
+                    """,
+                    (session_id,),
+                )
+                row = cur.fetchone()
+            return self._session_from_row(row) if row else None
         return self.sessions.get(session_id)
 
     def update_session(self, session_id: str, payload: SessionUpdateRequest) -> SessionRecord | None:
+        if self._db_enabled:
+            record = self.get_session(session_id)
+            if record is None:
+                return None
+            data = payload.model_dump(exclude_none=True)
+            updated = record.model_copy(update=data | {"updated_at": datetime.now(UTC)})
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE backend_sessions
+                    SET title = %s,
+                        summary = %s,
+                        memory_vector_id = %s,
+                        status = %s,
+                        updated_at = %s
+                    WHERE session_id = %s
+                    """,
+                    (
+                        updated.title,
+                        updated.summary,
+                        updated.memory_vector_id,
+                        updated.status,
+                        updated.updated_at,
+                        session_id,
+                    ),
+                )
+            return updated
+
         record = self.sessions.get(session_id)
         if record is None:
             return None
@@ -419,6 +559,32 @@ class PlatformStore:
 
     def upsert_policy(self, payload: PolicyUpsertRequest) -> PolicyRecord:
         now = datetime.now(UTC)
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO backend_policies (
+                        policy_id, name, type, rules, status, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (name, type) DO UPDATE SET
+                        rules = EXCLUDED.rules,
+                        status = EXCLUDED.status,
+                        updated_at = EXCLUDED.updated_at
+                    RETURNING policy_id, name, type, rules, status, created_at, updated_at
+                    """,
+                    (
+                        self._next_id("policy"),
+                        payload.name,
+                        payload.type,
+                        Json(payload.rules),
+                        payload.status,
+                        now,
+                        now,
+                    ),
+                )
+                row = cur.fetchone()
+            return self._policy_from_row(row)
+
         policy_id = self._find_policy_id(payload.name, payload.type) or self._next_id("policy")
         record = PolicyRecord(
             id=policy_id,
@@ -433,14 +599,61 @@ class PlatformStore:
         return record
 
     def list_policies(self) -> list[PolicyRecord]:
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT policy_id, name, type, rules, status, created_at, updated_at
+                    FROM backend_policies ORDER BY created_at DESC
+                    """
+                )
+                rows = cur.fetchall()
+            return [self._policy_from_row(row) for row in rows]
         return list(self.policies.values())
 
     def get_policy(self, policy_id: str) -> PolicyRecord | None:
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT policy_id, name, type, rules, status, created_at, updated_at
+                    FROM backend_policies WHERE policy_id = %s
+                    """,
+                    (policy_id,),
+                )
+                row = cur.fetchone()
+            return self._policy_from_row(row) if row else None
         return self.policies.get(policy_id)
 
     def submit_approval(self, payload: ApprovalSubmitRequest) -> ApprovalRecord:
         now = datetime.now(UTC)
         approval_id = self._next_id("approval")
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO backend_approvals (
+                        approval_id, applicant_id, action, resource_id,
+                        status, approver_id, reason, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING approval_id, applicant_id, action, resource_id,
+                              status, approver_id, reason, created_at, updated_at
+                    """,
+                    (
+                        approval_id,
+                        payload.applicant_id,
+                        payload.action,
+                        payload.resource_id,
+                        "pending",
+                        None,
+                        payload.reason,
+                        now,
+                        now,
+                    ),
+                )
+                row = cur.fetchone()
+            return self._approval_from_row(row)
+
         record = ApprovalRecord(
             id=approval_id,
             applicant_id=payload.applicant_id,
@@ -456,9 +669,32 @@ class PlatformStore:
         return record
 
     def list_approvals(self) -> list[ApprovalRecord]:
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT approval_id, applicant_id, action, resource_id,
+                           status, approver_id, reason, created_at, updated_at
+                    FROM backend_approvals ORDER BY created_at DESC
+                    """
+                )
+                rows = cur.fetchall()
+            return [self._approval_from_row(row) for row in rows]
         return list(self.approvals.values())
 
     def get_approval(self, approval_id: str) -> ApprovalRecord | None:
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT approval_id, applicant_id, action, resource_id,
+                           status, approver_id, reason, created_at, updated_at
+                    FROM backend_approvals WHERE approval_id = %s
+                    """,
+                    (approval_id,),
+                )
+                row = cur.fetchone()
+            return self._approval_from_row(row) if row else None
         return self.approvals.get(approval_id)
 
     def _next_id(self, prefix: str) -> str:
@@ -549,6 +785,85 @@ class PlatformStore:
                 ON backend_keys(user_id, project_id, status)
                 """
             )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS backend_skills (
+                    skill_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    version TEXT NOT NULL,
+                    owner_id TEXT,
+                    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    policy JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    dependencies JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    signature TEXT,
+                    status TEXT NOT NULL DEFAULT 'dev',
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_backend_skills_status_created
+                ON backend_skills(status, created_at DESC)
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS backend_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    project_id TEXT,
+                    title TEXT,
+                    summary TEXT,
+                    memory_vector_id TEXT,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_backend_sessions_user_project_created
+                ON backend_sessions(user_id, project_id, created_at DESC)
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS backend_policies (
+                    policy_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    type TEXT NOT NULL,
+                    rules JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    UNIQUE(name, type)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS backend_approvals (
+                    approval_id TEXT PRIMARY KEY,
+                    applicant_id TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    resource_id TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    approver_id TEXT,
+                    reason TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_backend_approvals_status_created
+                ON backend_approvals(status, created_at DESC)
+                """
+            )
 
     @staticmethod
     def _model_from_row(row: tuple[Any, ...]) -> ModelRecord:
@@ -582,4 +897,64 @@ class PlatformStore:
             status=row[7],
             created_at=row[8],
             updated_at=row[9],
+        )
+
+    @staticmethod
+    def _skill_from_row(row: tuple[Any, ...]) -> SkillRecord:
+        metadata = row[4] if isinstance(row[4], dict) else {}
+        policy = row[5] if isinstance(row[5], dict) else {}
+        dependencies = row[6] if isinstance(row[6], list) else []
+        return SkillRecord(
+            id=row[0],
+            name=row[1],
+            version=row[2],
+            owner_id=row[3],
+            metadata=metadata,
+            policy=policy,
+            dependencies=dependencies,
+            signature=row[7],
+            status=row[8],
+            created_at=row[9],
+            updated_at=row[10],
+        )
+
+    @staticmethod
+    def _session_from_row(row: tuple[Any, ...]) -> SessionRecord:
+        return SessionRecord(
+            id=row[0],
+            user_id=row[1],
+            project_id=row[2],
+            title=row[3],
+            summary=row[4],
+            memory_vector_id=row[5],
+            status=row[6],
+            created_at=row[7],
+            updated_at=row[8],
+        )
+
+    @staticmethod
+    def _policy_from_row(row: tuple[Any, ...]) -> PolicyRecord:
+        rules = row[3] if isinstance(row[3], dict) else {}
+        return PolicyRecord(
+            id=row[0],
+            name=row[1],
+            type=row[2],
+            rules=rules,
+            status=row[4],
+            created_at=row[5],
+            updated_at=row[6],
+        )
+
+    @staticmethod
+    def _approval_from_row(row: tuple[Any, ...]) -> ApprovalRecord:
+        return ApprovalRecord(
+            id=row[0],
+            applicant_id=row[1],
+            action=row[2],
+            resource_id=row[3],
+            status=row[4],
+            approver_id=row[5],
+            reason=row[6],
+            created_at=row[7],
+            updated_at=row[8],
         )
