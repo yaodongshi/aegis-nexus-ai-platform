@@ -206,6 +206,60 @@
       color: #334155;
       line-height: 1.4;
     }
+
+    .tab-nav {
+      display: flex;
+      gap: 4px;
+      margin-top: 16px;
+      border-bottom: 2px solid var(--line);
+      padding-bottom: 0;
+    }
+
+    .tab-btn {
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      border-bottom: 3px solid transparent;
+      border-radius: 0;
+      padding: 10px 20px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: -2px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .tab-btn:hover { color: var(--brand); }
+
+    .tab-btn.active {
+      color: var(--brand);
+      border-bottom-color: var(--brand);
+    }
+
+    .key-reveal {
+      background: #f0fdf4;
+      border: 1px solid #86efac;
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-family: monospace;
+      font-size: 14px;
+      color: #166534;
+      word-break: break-all;
+      margin-top: 10px;
+    }
+
+    .key-reveal strong { display: block; margin-bottom: 4px; color: #15803d; }
+
+    .copy-btn {
+      background: var(--brand-2);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      margin-top: 6px;
+    }
   </style>
 </head>
 <body>
@@ -215,6 +269,12 @@
       <p>在 Web 里直接管理大模型供应商：预设、统一供应商、自动获取模型，一次配置给多个应用同步。</p>
     </section>
 
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="providers">供应商管理</button>
+      <button class="tab-btn" data-tab="keys">🔑 Key 管理</button>
+    </nav>
+
+    <div id="tab-providers">
     <div class="grid">
       <section class="card">
         <h2>新增供应商</h2>
@@ -290,6 +350,46 @@
         <input id="importFile" class="hidden" type="file" accept="application/json" />
       </section>
     </div>
+    </div><!-- /tab-providers -->
+
+    <div id="tab-keys" class="hidden">
+      <div class="grid" style="grid-template-columns: 360px 1fr; margin-top: 16px;">
+        <section class="card">
+          <h2>生成虚拟 Key</h2>
+          <div class="row">
+            <label for="keyLabel">标签（用途/用户名）</label>
+            <input id="keyLabel" placeholder="例如 张三的开发 Key" />
+          </div>
+          <div class="row">
+            <label for="keyExpires">有效天数（0 = 永不过期）</label>
+            <input id="keyExpires" type="number" min="0" value="30" />
+          </div>
+          <div class="btns">
+            <button id="issueKeyBtn">生成 Key</button>
+            <button id="refreshKeysBtn" class="alt">刷新列表</button>
+          </div>
+          <div id="keyToast" class="muted" style="margin-top:12px; min-height:20px;"></div>
+          <div id="newKeyReveal" class="hidden"></div>
+        </section>
+
+        <section class="card">
+          <div class="toolbar">
+            <h2 style="margin:0;">虚拟 Key 列表</h2>
+            <span id="keyCount" class="pill">0 keys</span>
+          </div>
+          <div id="keyList" class="list" style="margin-top:10px;"></div>
+        </section>
+      </div>
+
+      <div class="card" style="margin-top:16px; padding:14px 20px;">
+        <h2 style="margin:0 0 8px;">💡 LiteLLM 内置管理台</h2>
+        <p style="margin:0; color:var(--muted); font-size:14px; line-height:1.6;">
+          LiteLLM 提供更完整的 <strong>用户管理、Team 管理、用量统计</strong>：
+          访问 <a href="http://localhost:4000/ui" target="_blank" style="color:var(--brand-2);">http://localhost:4000/ui</a>，
+          用户名 <code>admin</code>，密码填写 <code>.env</code> 里的 <code>LITELLM_MASTER_KEY</code>。
+        </p>
+      </div>
+    </div><!-- /tab-keys -->
   </div>
 
   <script>
@@ -868,6 +968,128 @@
       if (target.checked) selectedProviderIds.add(providerId);
       else selectedProviderIds.delete(providerId);
       renderProviders();
+    });
+
+    // ---- Tab switching ----
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        const tab = btn.getAttribute("data-tab");
+        document.getElementById("tab-providers").classList.toggle("hidden", tab !== "providers");
+        document.getElementById("tab-keys").classList.toggle("hidden", tab !== "keys");
+        if (tab === "keys") {
+          loadKeys().catch((err) => keyMessage(err.message, true));
+        }
+      });
+    });
+
+    // ---- Key management ----
+    const keyToast = document.getElementById("keyToast");
+    const keyCount = document.getElementById("keyCount");
+    const keyList = document.getElementById("keyList");
+    const newKeyReveal = document.getElementById("newKeyReveal");
+
+    function keyMessage(text, isError = false) {
+      keyToast.textContent = text;
+      keyToast.style.color = isError ? "#bb3e03" : "#2f6b35";
+    }
+
+    function renderKeys(keys) {
+      keyCount.textContent = `${keys.length} keys`;
+      keyList.innerHTML = "";
+      if (!keys.length) {
+        keyList.innerHTML = `<div class="muted" style="padding:12px;">暂无虚拟 Key</div>`;
+        return;
+      }
+      keys.forEach((k) => {
+        const div = document.createElement("div");
+        div.className = "item";
+        const expires = k.expires_at ? new Date(k.expires_at).toLocaleDateString("zh-CN") : "永不过期";
+        const created = k.created_at ? new Date(k.created_at).toLocaleDateString("zh-CN") : "-";
+        const maskedKey = k.key_masked || k.key_prefix || (k.key ? k.key.slice(0, 16) + "…" : "-");
+        div.innerHTML = `
+          <div class="item-head">
+            <h3 style="font-size:14px;">${k.label || "(无标签)"}</h3>
+            <span class="pill">${expires}</span>
+          </div>
+          <div class="meta">
+            <div><strong>Key：</strong><code>${maskedKey}</code></div>
+            <div><strong>创建时间：</strong>${created}</div>
+            <div><strong>ID：</strong>${k.id}</div>
+          </div>
+          <div class="actions">
+            <button data-key-op="revoke" data-key-id="${k.id}" class="warn">吊销</button>
+          </div>
+        `;
+        keyList.appendChild(div);
+      });
+    }
+
+    async function loadKeys() {
+      const resp = await apiFetch("/api/keys?limit=200");
+      if (!resp.ok) throw new Error("加载 Key 列表失败");
+      const payload = await resp.json();
+      renderKeys(payload.items || []);
+    }
+
+    async function issueKey() {
+      const label = document.getElementById("keyLabel").value.trim();
+      const expiresDays = parseInt(document.getElementById("keyExpires").value, 10) || 0;
+      const body = { label: label || "未命名 Key" };
+      if (expiresDays > 0) body.expires_days = expiresDays;
+      const resp = await apiFetch("/api/keys/issue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`生成失败: ${detail}`);
+      }
+      const data = await resp.json();
+      // Show the key value prominently (only visible once)
+      newKeyReveal.classList.remove("hidden");
+      newKeyReveal.innerHTML = `
+        <div class="key-reveal">
+          <strong>⚠️ 请立即复制！此 Key 仅展示一次</strong>
+          <code id="newKeyValue">${data.key}</code>
+          <br/>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText('${data.key}').then(()=>this.textContent='已复制 ✓')">复制 Key</button>
+        </div>
+      `;
+      document.getElementById("keyLabel").value = "";
+      keyMessage(`Key 已生成：${data.label}`);
+      await loadKeys();
+    }
+
+    async function revokeKey(keyId) {
+      if (!confirm("确认吊销此 Key？吊销后立即失效。")) return;
+      const resp = await apiFetch(`/api/keys/${keyId}`, { method: "DELETE" });
+      if (!resp.ok && resp.status !== 204) {
+        const detail = await resp.text();
+        throw new Error(`吊销失败: ${detail}`);
+      }
+      keyMessage("Key 已吊销");
+      await loadKeys();
+    }
+
+    document.getElementById("issueKeyBtn").addEventListener("click", async () => {
+      try { await issueKey(); } catch (err) { keyMessage(err.message, true); }
+    });
+    document.getElementById("refreshKeysBtn").addEventListener("click", async () => {
+      try { await loadKeys(); keyMessage("已刷新"); } catch (err) { keyMessage(err.message, true); }
+    });
+    keyList.addEventListener("click", async (e) => {
+      const btn = e.target.closest("button[data-key-op]");
+      if (!btn) return;
+      const op = btn.getAttribute("data-key-op");
+      const id = btn.getAttribute("data-key-id");
+      try {
+        if (op === "revoke") await revokeKey(id);
+      } catch (err) {
+        keyMessage(err.message, true);
+      }
     });
 
     (async function bootstrap() {
