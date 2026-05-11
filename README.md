@@ -91,6 +91,8 @@ curl -fsS http://localhost:8000/health
 - Backend API docs: `http://localhost:8000/docs`
 - Provider Console UI: `http://localhost:8000/provider-console`
 
+If you set `TEAM_AI_PLATFORM_ADMIN_TOKEN` in `.env`, management APIs under `/api/providers` and `/api/keys` require this token. In Provider Console, fill the "管理员 Token" input and click "保存 Token".
+
 ### 6.1 Provider management on Web
 
 Use Web APIs (Swagger UI) to manage providers instead of editing provider config files manually:
@@ -129,6 +131,7 @@ Use virtual keys for users/projects instead of distributing upstream provider ke
 
 - Never commit `.env`
 - Rotate `LITELLM_MASTER_KEY` periodically
+- Set and rotate `TEAM_AI_PLATFORM_ADMIN_TOKEN` for management API protection
 - Scope and revoke virtual keys by team/project lifecycle
 - Upgrade to IdP + short-lived tokens + Vault/KMS in Phase 2
 
@@ -226,6 +229,8 @@ curl -fsS http://localhost:8000/health
 - Backend API 文档: `http://localhost:8000/docs`
 - Provider Console 页面: `http://localhost:8000/provider-console`
 
+如果你在 `.env` 中设置了 `TEAM_AI_PLATFORM_ADMIN_TOKEN`，`/api/providers` 与 `/api/keys` 管理接口会要求管理员 Token。Provider Console 页面可在“管理员 Token”输入框填写并点击“保存 Token”。
+
 ### 6.1 在 Web 上管理供应商
 
 可通过 Web API（Swagger UI）管理供应商，不再手改供应商配置文件：
@@ -264,6 +269,7 @@ bash scripts/bootstrap_virtual_key.sh
 
 - 严禁提交 `.env`
 - 定期轮换 `LITELLM_MASTER_KEY`
+- 为管理接口配置并轮换 `TEAM_AI_PLATFORM_ADMIN_TOKEN`
 - 按团队/项目生命周期回收虚拟 Key
 - Phase 2 升级到 IdP + 短期令牌 + Vault/KMS
 

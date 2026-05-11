@@ -22,9 +22,9 @@ from ..schemas import (
     ProviderUpdateRequest,
 )
 from ..store import PlatformStore
-from .dependencies import get_store
+from .dependencies import get_store, require_admin_token
 
-router = APIRouter(prefix="/api/providers", tags=["providers"])
+router = APIRouter(prefix="/api/providers", tags=["providers"], dependencies=[Depends(require_admin_token)])
 
 
 @router.get("/presets", response_model=list[ProviderPresetRecord])

@@ -253,7 +253,12 @@
           <label for="notes">备注</label>
           <textarea id="notes" rows="3" placeholder="可写套餐/用途/到期时间"></textarea>
         </div>
+        <div class="row">
+          <label for="adminToken">管理员 Token（可选）</label>
+          <input id="adminToken" type="password" placeholder="TEAM_AI_PLATFORM_ADMIN_TOKEN" />
+        </div>
         <div class="btns">
+          <button id="saveTokenBtn" class="alt">保存 Token</button>
           <button id="addBtn">新增供应商</button>
           <button id="cancelEditBtn" class="alt hidden">取消编辑</button>
           <button id="refreshBtn" class="alt">刷新列表</button>
@@ -296,6 +301,8 @@
     const scopeInput = document.getElementById("scope");
     const appsInput = document.getElementById("apps");
     const notesInput = document.getElementById("notes");
+    const adminTokenInput = document.getElementById("adminToken");
+    const saveTokenBtn = document.getElementById("saveTokenBtn");
     const toast = document.getElementById("toast");
     const listBox = document.getElementById("list");
     const count = document.getElementById("count");
@@ -309,6 +316,25 @@
     let visibleProviders = [];
     let selectedProviderIds = new Set();
     let editingProviderId = null;
+
+    function getAdminToken() {
+      return adminTokenInput.value.trim();
+    }
+
+    function withAdminHeaders(headers = {}) {
+      const token = getAdminToken();
+      if (!token) return headers;
+      return {
+        ...headers,
+        "X-Admin-Token": token,
+      };
+    }
+
+    async function apiFetch(url, options = {}) {
+      const merged = { ...options };
+      merged.headers = withAdminHeaders(options.headers || {});
+      return fetch(url, merged);
+    }
 
     function message(text, isError = false) {
       toast.textContent = text;
@@ -334,7 +360,7 @@
     }
 
     async function loadPresets() {
-      const resp = await fetch("/api/providers/presets");
+      const resp = await apiFetch("/api/providers/presets");
       if (!resp.ok) throw new Error("加载预设失败");
       presets = await resp.json();
       presetSelect.innerHTML = "";
@@ -439,7 +465,7 @@
     }
 
     async function loadProviders() {
-      const resp = await fetch("/api/providers?limit=200&offset=0");
+      const resp = await apiFetch("/api/providers?limit=200&offset=0");
       if (!resp.ok) throw new Error("加载供应商失败");
       const payload = await resp.json();
       providers = payload.items || [];
@@ -458,7 +484,7 @@
         message("请先选择至少一个供应商", true);
         return;
       }
-      const resp = await fetch("/api/providers/batch-update", {
+      const resp = await apiFetch("/api/providers/batch-update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider_ids: ids, ...updatePayload }),
@@ -481,7 +507,7 @@
       const ok = confirm(`确认删除选中的 ${ids.length} 个供应商？此操作不可撤销。`);
       if (!ok) return;
 
-      const resp = await fetch("/api/providers/batch-delete", {
+      const resp = await apiFetch("/api/providers/batch-delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider_ids: ids }),
@@ -517,7 +543,7 @@
 
       if (editingProviderId) {
         if (apiKey) body.api_key = apiKey;
-        const resp = await fetch(`/api/providers/${editingProviderId}`, {
+        const resp = await apiFetch(`/api/providers/${editingProviderId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -533,7 +559,7 @@
           return;
         }
         body.api_key = apiKey;
-        const resp = await fetch("/api/providers", {
+        const resp = await apiFetch("/api/providers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -549,7 +575,7 @@
     }
 
     async function discover(providerId) {
-      const resp = await fetch(`/api/providers/${providerId}/discover-models`, { method: "POST" });
+      const resp = await apiFetch(`/api/providers/${providerId}/discover-models`, { method: "POST" });
       if (!resp.ok) {
         const detail = await resp.text();
         throw new Error(`获取模型失败: ${detail}`);
@@ -561,7 +587,7 @@
     async function syncProvider(providerId) {
       const apps = prompt("同步到哪些应用？逗号分隔", "open_webui,codex");
       if (apps === null) return;
-      const resp = await fetch(`/api/providers/${providerId}/sync`, {
+      const resp = await apiFetch(`/api/providers/${providerId}/sync`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target_apps: parseApps(apps) }),
@@ -576,7 +602,7 @@
 
     async function removeProvider(providerId) {
       if (!confirm("确认删除这个供应商？")) return;
-      const resp = await fetch(`/api/providers/${providerId}`, { method: "DELETE" });
+      const resp = await apiFetch(`/api/providers/${providerId}`, { method: "DELETE" });
       if (!resp.ok) {
         const detail = await resp.text();
         throw new Error(`删除失败: ${detail}`);
@@ -611,7 +637,7 @@
         .split(",")
         .map((v) => v.trim())
         .filter(Boolean);
-      const resp = await fetch(`/api/providers/${providerId}/probe`, {
+      const resp = await apiFetch(`/api/providers/${providerId}/probe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ endpoints, timeout_ms: 6000 }),
@@ -625,7 +651,7 @@
       if (payload.best_endpoint && payload.best_endpoint !== target.base_url) {
         const apply = confirm(`最快端点: ${payload.best_endpoint}，是否更新为当前供应商 base_url?`);
         if (apply) {
-          const patchResp = await fetch(`/api/providers/${providerId}`, {
+          const patchResp = await apiFetch(`/api/providers/${providerId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ base_url: payload.best_endpoint }),
@@ -644,7 +670,7 @@
 
     async function probeAllProviders() {
       const apply = confirm("批量测速后是否自动应用每个供应商的最快端点？");
-      const resp = await fetch("/api/providers/probe-all", {
+      const resp = await apiFetch("/api/providers/probe-all", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider_ids: [], timeout_ms: 6000, apply_best_endpoint: apply }),
@@ -664,7 +690,7 @@
     }
 
     async function showProbeHistory(providerId) {
-      const resp = await fetch(`/api/providers/${providerId}/probe-history?limit=5`);
+      const resp = await apiFetch(`/api/providers/${providerId}/probe-history?limit=5`);
       if (!resp.ok) {
         const detail = await resp.text();
         throw new Error(`读取历史失败: ${detail}`);
@@ -689,7 +715,7 @@
     async function toggleProvider(providerId) {
       const target = providers.find((item) => item.id === providerId);
       if (!target) return;
-      const resp = await fetch(`/api/providers/${providerId}`, {
+      const resp = await apiFetch(`/api/providers/${providerId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: !target.enabled }),
@@ -740,7 +766,7 @@
           enabled: item.enabled !== false,
           metadata: item.metadata || {},
         };
-        const resp = await fetch("/api/providers", {
+        const resp = await apiFetch("/api/providers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -754,6 +780,16 @@
     presetSelect.addEventListener("change", (e) => pickPreset(e.target.value));
     addBtn.addEventListener("click", async () => {
       try { await addProvider(); } catch (err) { message(err.message, true); }
+    });
+    saveTokenBtn.addEventListener("click", () => {
+      const token = getAdminToken();
+      if (!token) {
+        localStorage.removeItem("provider_console_admin_token");
+        message("已清除管理员 Token");
+        return;
+      }
+      localStorage.setItem("provider_console_admin_token", token);
+      message("管理员 Token 已保存");
     });
     cancelEditBtn.addEventListener("click", () => {
       resetForm();
@@ -836,6 +872,10 @@
 
     (async function bootstrap() {
       try {
+        const savedToken = localStorage.getItem("provider_console_admin_token") || "";
+        if (savedToken) {
+          adminTokenInput.value = savedToken;
+        }
         await loadPresets();
         await loadProviders();
         resetForm();

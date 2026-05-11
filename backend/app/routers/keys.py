@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ..schemas import KeyIssueRequest, KeyIssueResponse, KeyRecord, PageResponse
 from ..store import PlatformStore
-from .dependencies import get_store
+from .dependencies import get_store, require_admin_token
 
-router = APIRouter(prefix="/api/keys", tags=["keys"])
+router = APIRouter(prefix="/api/keys", tags=["keys"], dependencies=[Depends(require_admin_token)])
 
 
 @router.get("", response_model=PageResponse[KeyRecord])

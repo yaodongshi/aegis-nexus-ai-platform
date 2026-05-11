@@ -325,6 +325,30 @@ class TestBackendApp(unittest.TestCase):
         verify_deleted = self.client.get(f"/api/providers/{p1}")
         self.assertEqual(verify_deleted.status_code, 404)
 
+    def test_admin_token_required_for_provider_api_when_configured(self) -> None:
+        with patch.dict("os.environ", {"TEAM_AI_PLATFORM_ADMIN_TOKEN": "admin-token-1"}):
+            denied_resp = self.client.get("/api/providers", params={"limit": 1, "offset": 0})
+            self.assertEqual(denied_resp.status_code, 401)
+
+            allowed_resp = self.client.get(
+                "/api/providers",
+                params={"limit": 1, "offset": 0},
+                headers={"X-Admin-Token": "admin-token-1"},
+            )
+            self.assertEqual(allowed_resp.status_code, 200)
+
+    def test_admin_token_required_for_keys_api_when_configured(self) -> None:
+        with patch.dict("os.environ", {"TEAM_AI_PLATFORM_ADMIN_TOKEN": "admin-token-2"}):
+            denied_resp = self.client.get("/api/keys", params={"limit": 1, "offset": 0})
+            self.assertEqual(denied_resp.status_code, 401)
+
+            allowed_resp = self.client.get(
+                "/api/keys",
+                params={"limit": 1, "offset": 0},
+                headers={"X-Admin-Token": "admin-token-2"},
+            )
+            self.assertEqual(allowed_resp.status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()

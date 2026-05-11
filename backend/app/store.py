@@ -70,16 +70,19 @@ class PlatformStore:
     _approval_seq: count = field(default_factory=lambda: count(1))
     _provider_seq: count = field(default_factory=lambda: count(1))
     _provider_probe_seq: count = field(default_factory=lambda: count(1))
+    _schema_ensured: bool = False
 
     def __post_init__(self) -> None:
         if self.db_dsn is None:
             env_dsn = os.getenv("TEAM_AI_PLATFORM_DB_DSN", "").strip()
             self.db_dsn = env_dsn or None
+        if self._db_enabled:
+            self._ensure_schema_once()
 
     def seed_defaults(self) -> None:
         now = datetime.now(UTC)
         if self._db_enabled:
-            self._ensure_schema()
+            self._ensure_schema_once()
             self.register_model(
                 ModelRegisterRequest(
                     provider="openai",
@@ -1172,6 +1175,12 @@ class PlatformStore:
         if not self.db_dsn:
             raise RuntimeError("TEAM_AI_PLATFORM_DB_DSN is not configured")
         return psycopg2.connect(self.db_dsn)
+
+    def _ensure_schema_once(self) -> None:
+        if self._schema_ensured:
+            return
+        self._ensure_schema()
+        self._schema_ensured = True
 
     def _ensure_schema(self) -> None:
         with self._connect() as conn, conn.cursor() as cur:
