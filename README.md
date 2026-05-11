@@ -63,6 +63,19 @@ DOCKER_CLIENT_TIMEOUT=180
 COMPOSE_HTTP_TIMEOUT=180
 ```
 
+If you see credential helper errors like:
+
+```text
+error getting credentials - err: exec: "docker-credential-desktop": executable file not found in $PATH
+```
+
+Fix by removing invalid `credsStore` from Docker config:
+
+```bash
+cp ~/.docker/config.json ~/.docker/config.json.bak
+sed -i '' '/"credsStore"[[:space:]]*:/d' ~/.docker/config.json
+```
+
 1. Verify service health.
 
 ```bash
@@ -183,6 +196,19 @@ LITELLM_DB_IMAGE=postgres:16
 QDRANT_IMAGE=qdrant/qdrant:latest
 DOCKER_CLIENT_TIMEOUT=180
 COMPOSE_HTTP_TIMEOUT=180
+```
+
+如果出现以下凭证助手错误：
+
+```text
+error getting credentials - err: exec: "docker-credential-desktop": executable file not found in $PATH
+```
+
+可删除 Docker 配置里的无效 `credsStore`：
+
+```bash
+cp ~/.docker/config.json ~/.docker/config.json.bak
+sed -i '' '/"credsStore"[[:space:]]*:/d' ~/.docker/config.json
 ```
 
 1. 执行健康检查。
