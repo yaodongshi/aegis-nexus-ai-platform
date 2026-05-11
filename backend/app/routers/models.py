@@ -10,8 +10,19 @@ router = APIRouter(prefix="/api/models", tags=["models"])
 
 
 @router.get("", response_model=list[ModelRecord])
-def list_models(store: PlatformStore = Depends(get_store)) -> list[ModelRecord]:
-    return store.list_models()
+def list_models(
+    provider: str | None = None,
+    availability: str | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+    store: PlatformStore = Depends(get_store),
+) -> list[ModelRecord]:
+    return store.list_models(
+        provider=provider,
+        availability=availability,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post("", response_model=ModelRecord, status_code=status.HTTP_201_CREATED)

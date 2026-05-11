@@ -28,6 +28,13 @@ class TestBackendApp(unittest.TestCase):
         self.assertTrue(models)
         self.assertEqual(models[0]["id"], "gpt-4o")
 
+    def test_model_filtering(self) -> None:
+        response = self.client.get("/api/models", params={"provider": "openai"})
+        self.assertEqual(response.status_code, 200)
+        models = response.json()
+        self.assertTrue(models)
+        self.assertTrue(all(model["provider"] == "openai" for model in models))
+
     def test_issue_virtual_key(self) -> None:
         response = self.client.post(
             "/api/keys/issue",

@@ -70,8 +70,24 @@ class PlatformStore:
             updated_at=now,
         )
 
-    def list_models(self) -> list[ModelRecord]:
-        return list(self.models.values())
+    def list_models(
+        self,
+        *,
+        provider: str | None = None,
+        availability: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[ModelRecord]:
+        records = list(self.models.values())
+        if provider is not None:
+            records = [record for record in records if record.provider == provider]
+        if availability is not None:
+            records = [record for record in records if record.availability == availability]
+        if offset > 0:
+            records = records[offset:]
+        if limit is not None:
+            records = records[:limit]
+        return records
 
     def register_model(self, payload: ModelRegisterRequest) -> ModelRecord:
         now = datetime.now(UTC)
