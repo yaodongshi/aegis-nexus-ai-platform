@@ -195,6 +195,17 @@
       font-size: 13px;
       min-height: 20px;
     }
+
+    .probe {
+      margin-top: 8px;
+      padding: 8px;
+      border-radius: 10px;
+      background: #f4f8ff;
+      border: 1px dashed #adc7ff;
+      font-size: 12px;
+      color: #334155;
+      line-height: 1.4;
+    }
   </style>
 </head>
 <body>
@@ -346,10 +357,12 @@
         <div class="actions">
           <button data-op="edit" data-id="${provider.id}" class="alt">编辑</button>
           <button data-op="toggle" data-id="${provider.id}" class="alt">${provider.enabled ? "停用" : "启用"}</button>
+          <button data-op="probe" data-id="${provider.id}" class="alt">测速</button>
           <button data-op="discover" data-id="${provider.id}">获取模型</button>
           <button data-op="sync" data-id="${provider.id}" class="alt">保存并同步</button>
           <button data-op="delete" data-id="${provider.id}" class="warn">删除</button>
         </div>
+        <div id="probe-${provider.id}" class="probe hidden"></div>
       `;
       return div;
     }
@@ -508,6 +521,63 @@
       await loadProviders();
     }
 
+    function renderProbe(providerId, payload) {
+      const panel = document.getElementById(`probe-${providerId}`);
+      if (!panel) return;
+      const rows = (payload.results || []).map((item) => {
+        const mark = item.ok ? "OK" : "FAIL";
+        const code = item.status_code === null ? "-" : item.status_code;
+        const latency = item.latency_ms === null ? "-" : `${item.latency_ms}ms`;
+        const err = item.error ? ` (${item.error})` : "";
+        return `${mark} | ${item.endpoint} | ${latency} | ${code}${err}`;
+      });
+      panel.textContent = `best: ${payload.best_endpoint || "none"}\n${rows.join("\n")}`;
+      panel.classList.remove("hidden");
+    }
+
+    async function probeProvider(providerId) {
+      const target = providers.find((item) => item.id === providerId);
+      if (!target) return;
+      const raw = prompt(
+        "输入要测速的端点（逗号分隔），留空则只测当前 base_url",
+        `${target.base_url},${target.base_url.replace(/\/$/, "")}/v1`
+      );
+      if (raw === null) return;
+      const endpoints = raw
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean);
+      const resp = await fetch(`/api/providers/${providerId}/probe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoints, timeout_ms: 6000 }),
+      });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`测速失败: ${detail}`);
+      }
+      const payload = await resp.json();
+      renderProbe(providerId, payload);
+      if (payload.best_endpoint && payload.best_endpoint !== target.base_url) {
+        const apply = confirm(`最快端点: ${payload.best_endpoint}，是否更新为当前供应商 base_url?`);
+        if (apply) {
+          const patchResp = await fetch(`/api/providers/${providerId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ base_url: payload.best_endpoint }),
+          });
+          if (!patchResp.ok) {
+            const detail = await patchResp.text();
+            throw new Error(`更新端点失败: ${detail}`);
+          }
+          message("已应用最快端点");
+          await loadProviders();
+          return;
+        }
+      }
+      message("测速完成");
+    }
+
     async function toggleProvider(providerId) {
       const target = providers.find((item) => item.id === providerId);
       if (!target) return;
@@ -607,6 +677,7 @@
         if (op === "delete") await removeProvider(id);
         if (op === "edit") startEdit(id);
         if (op === "toggle") await toggleProvider(id);
+        if (op === "probe") await probeProvider(id);
       } catch (err) {
         message(err.message, true);
       }

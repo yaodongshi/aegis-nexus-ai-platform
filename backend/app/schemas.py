@@ -232,3 +232,23 @@ class ProviderModelDiscoveryResponse(BaseModel):
     endpoint: str
     models: list[str] = Field(default_factory=list)
     fetched_at: datetime
+
+
+class ProviderProbeRequest(BaseModel):
+    endpoints: list[str] = Field(default_factory=list)
+    timeout_ms: int = 5000
+
+
+class ProviderProbeResult(BaseModel):
+    endpoint: str
+    ok: bool
+    status_code: int | None = None
+    latency_ms: int | None = None
+    error: str | None = None
+
+
+class ProviderProbeResponse(BaseModel):
+    provider_id: str
+    best_endpoint: str | None = None
+    results: list[ProviderProbeResult] = Field(default_factory=list)
+    probed_at: datetime

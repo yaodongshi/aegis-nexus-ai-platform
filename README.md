@@ -87,6 +87,7 @@ Use Web APIs (Swagger UI) to manage providers instead of editing provider config
 1. Call `POST /api/providers` to add provider (name/base_url/api_key/apps)
 1. Call `POST /api/providers/{provider_id}/discover-models` to auto-fetch `/v1/models`
 1. Call `POST /api/providers/{provider_id}/sync` to sync as unified provider
+1. Call `POST /api/providers/{provider_id}/probe` to benchmark multiple endpoints and pick fastest
 
 ### 7. Generate a virtual key
 
@@ -204,6 +205,7 @@ curl -fsS http://localhost:8000/health
 1. 调用 `POST /api/providers` 新增供应商（名称/端点/API Key/应用绑定）
 1. 调用 `POST /api/providers/{provider_id}/discover-models` 自动获取 `/v1/models`
 1. 调用 `POST /api/providers/{provider_id}/sync` 作为统一供应商同步到目标应用
+1. 调用 `POST /api/providers/{provider_id}/probe` 对多个端点测速并选择最快端点
 
 ### 7. 生成虚拟 Key
 

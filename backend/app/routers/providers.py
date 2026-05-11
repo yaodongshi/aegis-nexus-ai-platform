@@ -7,6 +7,8 @@ from ..schemas import (
     PageResponse,
     ProviderCreateRequest,
     ProviderModelDiscoveryResponse,
+    ProviderProbeRequest,
+    ProviderProbeResponse,
     ProviderPresetRecord,
     ProviderRecord,
     ProviderSyncRequest,
@@ -91,3 +93,17 @@ def discover_provider_models(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to fetch provider models") from exc
+
+
+@router.post("/{provider_id}/probe", response_model=ProviderProbeResponse)
+def probe_provider_endpoints(
+    provider_id: str,
+    payload: ProviderProbeRequest,
+    store: PlatformStore = Depends(get_store),
+) -> ProviderProbeResponse:
+    try:
+        return store.probe_provider_endpoints(provider_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to probe provider endpoints") from exc

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
+from backend.app.schemas import ProviderProbeResponse, ProviderProbeResult
 
 
 class TestBackendApp(unittest.TestCase):
@@ -125,6 +128,44 @@ class TestBackendApp(unittest.TestCase):
         get_resp = self.client.get(f"/api/providers/{provider_id}")
         self.assertEqual(get_resp.status_code, 200)
         self.assertFalse(get_resp.json()["enabled"])
+
+    def test_provider_probe_endpoint(self) -> None:
+        create_resp = self.client.post(
+            "/api/providers",
+            json={
+                "name": "Probe Provider",
+                "provider_type": "openai",
+                "base_url": "https://api.openai.com",
+                "api_key": "sk-probe-12345678",
+                "scope": "app",
+                "apps": ["open_webui"],
+                "api_format": "openai",
+                "enabled": True,
+            },
+        )
+        self.assertEqual(create_resp.status_code, 201)
+        provider_id = create_resp.json()["id"]
+
+        fake_response = ProviderProbeResponse(
+            provider_id=provider_id,
+            best_endpoint="https://fast.example.com",
+            results=[
+                ProviderProbeResult(endpoint="https://slow.example.com", ok=True, status_code=200, latency_ms=800),
+                ProviderProbeResult(endpoint="https://fast.example.com", ok=True, status_code=200, latency_ms=120),
+            ],
+            probed_at=datetime.now(UTC),
+        )
+
+        with patch("backend.app.store.PlatformStore.probe_provider_endpoints", return_value=fake_response):
+            probe_resp = self.client.post(
+                f"/api/providers/{provider_id}/probe",
+                json={"endpoints": ["https://slow.example.com", "https://fast.example.com"], "timeout_ms": 3000},
+            )
+
+        self.assertEqual(probe_resp.status_code, 200)
+        payload = probe_resp.json()
+        self.assertEqual(payload["best_endpoint"], "https://fast.example.com")
+        self.assertEqual(len(payload["results"]), 2)
 
 
 if __name__ == "__main__":

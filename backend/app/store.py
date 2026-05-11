@@ -6,6 +6,7 @@ from hashlib import sha256
 from itertools import count
 import json
 import os
+from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
@@ -24,6 +25,9 @@ from .schemas import (
     ModelUpdateRequest,
     ProviderCreateRequest,
     ProviderModelDiscoveryResponse,
+    ProviderProbeRequest,
+    ProviderProbeResponse,
+    ProviderProbeResult,
     ProviderRecord,
     ProviderSyncRequest,
     ProviderUpdateRequest,
@@ -927,6 +931,59 @@ class PlatformStore:
             endpoint=endpoint,
             models=sorted(set(model_ids)),
             fetched_at=datetime.now(UTC),
+        )
+
+    def probe_provider_endpoints(self, provider_id: str, payload: ProviderProbeRequest) -> ProviderProbeResponse:
+        provider = self.get_provider(provider_id)
+        if provider is None:
+            raise ValueError("Provider not found")
+        api_key = self._get_provider_secret(provider_id)
+        if not api_key:
+            raise ValueError("Provider API key is missing")
+
+        timeout_ms = max(500, min(payload.timeout_ms, 30000))
+        timeout_sec = timeout_ms / 1000.0
+        requested = [endpoint.strip() for endpoint in payload.endpoints if endpoint.strip()]
+        endpoints = requested or [provider.base_url]
+
+        results: list[ProviderProbeResult] = []
+        for base in endpoints:
+            endpoint = self._models_endpoint(base)
+            started = perf_counter()
+            try:
+                with httpx.Client(timeout=timeout_sec) as client:
+                    response = client.get(endpoint, headers={"Authorization": f"Bearer {api_key}"})
+                latency = int((perf_counter() - started) * 1000)
+                ok = response.status_code < 500
+                results.append(
+                    ProviderProbeResult(
+                        endpoint=base,
+                        ok=ok,
+                        status_code=response.status_code,
+                        latency_ms=latency,
+                        error=None if ok else f"HTTP {response.status_code}",
+                    )
+                )
+            except Exception as exc:
+                latency = int((perf_counter() - started) * 1000)
+                results.append(
+                    ProviderProbeResult(
+                        endpoint=base,
+                        ok=False,
+                        status_code=None,
+                        latency_ms=latency,
+                        error=str(exc),
+                    )
+                )
+
+        usable = [item for item in results if item.ok and item.latency_ms is not None]
+        usable.sort(key=lambda item: item.latency_ms or 10**9)
+        best_endpoint = usable[0].endpoint if usable else None
+        return ProviderProbeResponse(
+            provider_id=provider_id,
+            best_endpoint=best_endpoint,
+            results=results,
+            probed_at=datetime.now(UTC),
         )
 
     def _next_id(self, prefix: str) -> str:

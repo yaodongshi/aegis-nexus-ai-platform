@@ -328,3 +328,17 @@
 ### POST /api/providers/{id}/sync
 
 将供应商作为统一供应商同步到目标应用列表。
+
+### POST /api/providers/{id}/probe
+
+端点测速：对多个候选端点进行探测，返回每个端点的延迟、状态码及最快端点。
+
+请求字段：
+
+- `endpoints`：候选端点列表
+- `timeout_ms`：单次测速超时时间（毫秒）
+
+响应字段：
+
+- `best_endpoint`：最快且可用的端点
+- `results`：每个端点的测速结果（`ok`、`latency_ms`、`status_code`、`error`）
