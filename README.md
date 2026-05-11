@@ -54,6 +54,15 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
+If image pull is slow or unstable, you can set mirror images in `.env`:
+
+```dotenv
+LITELLM_DB_IMAGE=postgres:16
+QDRANT_IMAGE=qdrant/qdrant:latest
+DOCKER_CLIENT_TIMEOUT=180
+COMPOSE_HTTP_TIMEOUT=180
+```
+
 1. Verify service health.
 
 ```bash
@@ -160,6 +169,15 @@ cp .env.example .env
 
 ```bash
 docker compose up -d --build
+```
+
+如果镜像拉取不稳定（例如 `registry-1.docker.io` 超时），可在 `.env` 设置镜像与超时参数：
+
+```dotenv
+LITELLM_DB_IMAGE=postgres:16
+QDRANT_IMAGE=qdrant/qdrant:latest
+DOCKER_CLIENT_TIMEOUT=180
+COMPOSE_HTTP_TIMEOUT=180
 ```
 
 1. 执行健康检查。

@@ -54,7 +54,7 @@ services:
       - team_ai_net
 
   litellm_db:
-    image: postgres:16
+    image: ${LITELLM_DB_IMAGE:-postgres:16}
     container_name: team-litellm-db
     restart: unless-stopped
     environment:
@@ -74,7 +74,7 @@ services:
       - team_ai_net
 
   qdrant:
-    image: qdrant/qdrant:latest
+    image: ${QDRANT_IMAGE:-qdrant/qdrant:latest}
     container_name: team-qdrant
     restart: unless-stopped
     ports:
