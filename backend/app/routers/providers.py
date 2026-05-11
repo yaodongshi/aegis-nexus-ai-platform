@@ -28,8 +28,32 @@ router = APIRouter(prefix="/api/providers", tags=["providers"], dependencies=[De
 
 
 @router.get("/presets", response_model=list[ProviderPresetRecord])
-def list_provider_presets() -> list[ProviderPresetRecord]:
-    return PRESET_PROVIDERS
+def list_provider_presets(
+    app: str | None = None,
+    provider_type: str | None = None,
+    api_format: str | None = None,
+    q: str | None = None,
+) -> list[ProviderPresetRecord]:
+    presets = PRESET_PROVIDERS
+    if app is not None:
+        app_key = app.strip().lower()
+        presets = [item for item in presets if any(v.lower() == app_key for v in item.suggested_apps)]
+    if provider_type is not None:
+        type_key = provider_type.strip().lower()
+        presets = [item for item in presets if item.provider_type.lower() == type_key]
+    if api_format is not None:
+        format_key = api_format.strip().lower()
+        presets = [item for item in presets if item.api_format.lower() == format_key]
+    if q is not None and q.strip():
+        keyword = q.strip().lower()
+        presets = [
+            item
+            for item in presets
+            if keyword in item.key.lower()
+            or keyword in item.name.lower()
+            or keyword in item.provider_type.lower()
+        ]
+    return presets
 
 
 @router.get("", response_model=PageResponse[ProviderRecord])

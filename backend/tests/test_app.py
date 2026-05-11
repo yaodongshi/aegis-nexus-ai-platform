@@ -73,6 +73,18 @@ class TestBackendApp(unittest.TestCase):
         presets = presets_resp.json()
         self.assertTrue(any(item["key"] == "openai_official" for item in presets))
 
+        app_filter_resp = self.client.get("/api/providers/presets", params={"app": "gemini"})
+        self.assertEqual(app_filter_resp.status_code, 200)
+        app_filtered = app_filter_resp.json()
+        self.assertTrue(app_filtered)
+        self.assertTrue(all("gemini" in item["suggested_apps"] for item in app_filtered))
+
+        keyword_filter_resp = self.client.get("/api/providers/presets", params={"q": "deepseek"})
+        self.assertEqual(keyword_filter_resp.status_code, 200)
+        keyword_filtered = keyword_filter_resp.json()
+        self.assertTrue(keyword_filtered)
+        self.assertTrue(any("deepseek" in item["key"] for item in keyword_filtered))
+
         create_resp = self.client.post(
             "/api/providers",
             json={
