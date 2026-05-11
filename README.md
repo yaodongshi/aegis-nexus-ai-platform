@@ -21,7 +21,7 @@ Aegis Nexus AI Platform is an internal team AI backbone built with open-source c
 - Qdrant vector store as RAG-ready data plane
 - PostgreSQL metadata layer for gateway policy/state
 - Virtual key bootstrap for team/project level access governance
-- Scripted startup and health verification
+- Docker Compose one-command startup and health verification
 
 ### 3. Architecture
 
@@ -51,13 +51,14 @@ cp .env.example .env
 1. Start all services.
 
 ```bash
-bash scripts/start.sh
+docker compose up -d --build
 ```
 
 1. Verify service health.
 
 ```bash
-bash scripts/healthcheck.sh
+docker compose ps
+curl -fsS http://localhost:8000/health
 ```
 
 ### 6. Access endpoints
@@ -116,7 +117,7 @@ Use virtual keys for users/projects instead of distributing upstream provider ke
 - 基于 Qdrant 的向量数据库底座（RAG Ready）
 - 基于 PostgreSQL 的网关元数据与策略存储
 - 支持虚拟 Key 初始化，便于团队级权限治理
-- 提供一键启动与健康检查脚本
+- 提供基于 Docker Compose 的一键启动与健康检查
 
 ### 3. 架构说明
 
@@ -146,13 +147,14 @@ cp .env.example .env
 1. 启动服务。
 
 ```bash
-bash scripts/start.sh
+docker compose up -d --build
 ```
 
 1. 执行健康检查。
 
 ```bash
-bash scripts/healthcheck.sh
+docker compose ps
+curl -fsS http://localhost:8000/health
 ```
 
 ### 6. 访问地址
