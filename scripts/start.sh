@@ -4,6 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+if [[ ! -f "${PROJECT_ROOT}/docker-compose.yml" ]]; then
+  echo "[ERROR] Missing docker-compose.yml in ${PROJECT_ROOT}" >&2
+  exit 1
+fi
+
 if [[ ! -f "${PROJECT_ROOT}/.env" ]]; then
   echo "[ERROR] Missing .env file in ${PROJECT_ROOT}" >&2
   echo "[INFO] Copy .env.example to .env and fill in provider keys." >&2

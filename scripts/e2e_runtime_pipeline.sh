@@ -15,6 +15,23 @@ GATEWAY_BASE_URL="${GATEWAY_BASE_URL:-http://localhost:4000}"
 ADMIN_TOKEN="${TEAM_AI_PLATFORM_ADMIN_TOKEN:-}"
 MASTER_KEY="${LITELLM_MASTER_KEY:-}"
 
+require_command() {
+  local cmd="$1"
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "[FAIL] Required command not found: ${cmd}" >&2
+    exit 1
+  fi
+}
+
+require_command curl
+require_command jq
+require_command docker
+
+if [[ ! -f "${PROJECT_ROOT}/docker-compose.yml" ]]; then
+  echo "[FAIL] Missing docker-compose.yml in ${PROJECT_ROOT}" >&2
+  exit 1
+fi
+
 mkdir -p "${REPORT_DIR}"
 REPORT_FILE="${REPORT_DIR}/e2e_runtime_pipeline_$(date +%Y%m%d_%H%M%S).log"
 
