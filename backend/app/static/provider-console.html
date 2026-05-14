@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Provider Console</title>
+  <title>Team AI Admin Console</title>
   <style>
     :root {
       --bg: #f6f3ea;
@@ -260,21 +260,183 @@
       cursor: pointer;
       margin-top: 6px;
     }
+
+    .entry-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    @media (max-width: 920px) {
+      .entry-grid { grid-template-columns: 1fr; }
+    }
+
+    .entry-card {
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      border-radius: 16px;
+      padding: 14px;
+      backdrop-filter: blur(8px);
+    }
+
+    .entry-card strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .entry-card p {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.5;
+      opacity: 0.92;
+    }
+
+    .entry-card a {
+      color: #f5fffe;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .entry-card code {
+      background: rgba(255, 255, 255, 0.14);
+      border-radius: 6px;
+      padding: 1px 6px;
+      font-size: 12px;
+    }
+
+    .overview-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    @media (max-width: 920px) {
+      .overview-grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    .kpi {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 12px;
+    }
+
+    .kpi strong {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+
+    .kpi span {
+      display: block;
+      margin-top: 6px;
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--brand);
+    }
+
+    .service-grid {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    @media (max-width: 920px) {
+      .service-grid { grid-template-columns: 1fr; }
+    }
+
+    .service-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 12px;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: baseline;
+    }
+
+    .status-up { background: #2f6b35; }
+    .status-down { background: #bb3e03; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <section class="hero">
-      <h1>Provider Console</h1>
-      <p>在 Web 里直接管理大模型供应商：预设、统一供应商、自动获取模型，一次配置给多个应用同步。</p>
+      <h1>Team AI 管理后台</h1>
+      <p>统一管理供应商 Key、虚拟 Key，并逐步收口技能、知识库和团队权限。成员侧统一使用团队工作台，内部网关与向量库不再作为日常入口。</p>
+      <div class="entry-grid">
+        <div class="entry-card">
+          <strong>管理员入口</strong>
+          <p><a href="/admin">8000 /admin</a> 负责供应商、虚拟 Key 与后续 Skill/Knowledge/团队权限管理。</p>
+        </div>
+        <div class="entry-card">
+          <strong>成员入口</strong>
+          <p><a href="http://localhost:9000" target="_blank" rel="noreferrer">9000 Open WebUI</a> 作为团队工作台，成员统一在这里协作与使用共享知识。</p>
+        </div>
+        <div class="entry-card">
+          <strong>CLI / IDE 网关</strong>
+          <p><code>http://localhost:4000/v1</code> 只给 Codex / Claude Code / OpenCode 等客户端通过虚拟 Key 调用。</p>
+        </div>
+        <div class="entry-card">
+          <strong>内部基础设施</strong>
+          <p><code>6333 Qdrant</code> 是知识库向量底座，不是普通用户入口；LiteLLM UI 仅保留给运维排障。</p>
+        </div>
+      </div>
     </section>
 
     <nav class="tab-nav">
-      <button class="tab-btn active" data-tab="providers">供应商管理</button>
+      <button class="tab-btn active" data-tab="overview">平台总览</button>
+      <button class="tab-btn" data-tab="providers">供应商管理</button>
       <button class="tab-btn" data-tab="keys">🔑 Key 管理</button>
+      <button class="tab-btn" data-tab="learning">闭环学习</button>
     </nav>
 
-    <div id="tab-providers">
+    <div id="tab-overview">
+      <div class="grid" style="grid-template-columns: 1fr; margin-top: 16px;">
+        <section class="card">
+          <div class="toolbar">
+            <h2 style="margin:0;">平台治理总览</h2>
+            <button id="refreshOverviewBtn" class="alt">刷新总览</button>
+          </div>
+          <div id="overviewGrid" class="overview-grid"></div>
+          <div id="overviewToast" class="muted" style="margin-top:10px; min-height: 20px;"></div>
+        </section>
+
+        <section class="card">
+          <h2 style="margin:0;">系统状态（运维视角）</h2>
+          <div id="serviceGrid" class="service-grid"></div>
+          <p class="muted" style="margin:10px 0 0; font-size:13px;">
+            6333 Qdrant 是知识库与检索的内部基础设施，不是普通用户入口；普通用户入口依然是 9000 工作台。
+          </p>
+        </section>
+
+        <section class="card">
+          <h2 style="margin:0 0 10px;">管理平台分区</h2>
+          <div class="btns">
+            <button id="gotoProvidersBtn">进入供应商治理</button>
+            <button id="gotoKeysBtn" class="alt">进入 Key 治理</button>
+            <button id="gotoLearningBtn" class="alt">进入闭环学习</button>
+            <button class="alt" disabled>成员与权限（下一步）</button>
+            <button class="alt" disabled>知识库治理（下一步）</button>
+            <button class="alt" disabled>Skill 生命周期（下一步）</button>
+          </div>
+        </section>
+      </div>
+    </div><!-- /tab-overview -->
+
+    <div id="tab-providers" class="hidden">
     <div class="grid">
       <section class="card">
         <h2>新增供应商</h2>
@@ -361,6 +523,22 @@
             <input id="keyLabel" placeholder="例如 张三的开发 Key" />
           </div>
           <div class="row">
+            <label for="keyUserId">成员标识</label>
+            <input id="keyUserId" placeholder="例如 zhangsan 或 u_1001" />
+          </div>
+          <div class="row">
+            <label for="keyProjectId">项目标识</label>
+            <input id="keyProjectId" placeholder="例如 p_ai_platform" />
+          </div>
+          <div class="row">
+            <label for="keyScope">权限范围</label>
+            <input id="keyScope" value="project:*" placeholder="例如 project:* 或 project:read" />
+          </div>
+          <div class="row">
+            <label for="keyQuota">调用配额（可选）</label>
+            <input id="keyQuota" type="number" min="0" placeholder="例如 1000" />
+          </div>
+          <div class="row">
             <label for="keyExpires">有效天数（0 = 永不过期）</label>
             <input id="keyExpires" type="number" min="0" value="30" />
           </div>
@@ -377,6 +555,28 @@
             <h2 style="margin:0;">虚拟 Key 列表</h2>
             <span id="keyCount" class="pill">0 keys</span>
           </div>
+          <div class="row">
+            <label for="keySearchInput">搜索 Key</label>
+            <input id="keySearchInput" placeholder="按标签、成员、项目、范围筛选" />
+          </div>
+          <div class="row" style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:8px;">
+            <div>
+              <label for="keyFilterUserId">成员筛选</label>
+              <input id="keyFilterUserId" placeholder="u_1001" />
+            </div>
+            <div>
+              <label for="keyFilterProjectId">项目筛选</label>
+              <input id="keyFilterProjectId" placeholder="p_ai_platform" />
+            </div>
+            <div>
+              <label for="keyFilterStatus">状态筛选</label>
+              <select id="keyFilterStatus">
+                <option value="">全部</option>
+                <option value="active">active</option>
+                <option value="revoked">revoked</option>
+              </select>
+            </div>
+          </div>
           <div id="keyList" class="list" style="margin-top:10px;"></div>
         </section>
       </div>
@@ -390,6 +590,70 @@
         </p>
       </div>
     </div><!-- /tab-keys -->
+
+    <div id="tab-learning" class="hidden">
+      <div class="grid" style="grid-template-columns: 420px 1fr; margin-top: 16px;">
+        <section class="card">
+          <h2>任务复盘上报</h2>
+          <div class="row">
+            <label for="taskToolType">工具类型</label>
+            <select id="taskToolType">
+              <option value="codex">codex</option>
+              <option value="claude_code">claude_code</option>
+              <option value="other">other</option>
+            </select>
+          </div>
+          <div class="row">
+            <label for="taskUserId">成员标识</label>
+            <input id="taskUserId" placeholder="例如 u_zhangsan" />
+          </div>
+          <div class="row">
+            <label for="taskTitle">任务标题</label>
+            <input id="taskTitle" placeholder="例如 修复供应商探测逻辑" />
+          </div>
+          <div class="row">
+            <label for="taskSummary">完成总结</label>
+            <textarea id="taskSummary" rows="3" placeholder="本次任务的结果与关键产出"></textarea>
+          </div>
+          <div class="row">
+            <label for="taskErrorLog">错误模式</label>
+            <textarea id="taskErrorLog" rows="2" placeholder="例如 timeout, invalid scope"></textarea>
+          </div>
+          <div class="row">
+            <label for="taskLessons">经验沉淀</label>
+            <textarea id="taskLessons" rows="2" placeholder="例如 先探测最快端点再发布"></textarea>
+          </div>
+          <div class="row">
+            <label for="taskSkillName">建议技能名称</label>
+            <input id="taskSkillName" placeholder="例如 provider-probe-optimizer" />
+          </div>
+          <div class="row">
+            <label for="taskSystemPrompt">建议系统 Prompt</label>
+            <textarea id="taskSystemPrompt" rows="3" placeholder="你是一个...助手"></textarea>
+          </div>
+          <div class="row">
+            <label for="taskUserPrompt">建议用户模板</label>
+            <textarea id="taskUserPrompt" rows="2" placeholder="请基于 {project} ..."></textarea>
+          </div>
+          <div class="btns">
+            <button id="reportTaskBtn">上报并生成提案</button>
+            <button id="refreshLearningBtn" class="alt">刷新列表</button>
+          </div>
+          <div id="learningToast" class="muted" style="margin-top:12px; min-height:20px;"></div>
+        </section>
+
+        <section class="card">
+          <div class="toolbar">
+            <h2 style="margin:0;">技能更新提案</h2>
+            <span id="skillUpdateCount" class="pill">0 proposals</span>
+          </div>
+          <div id="skillUpdateList" class="list"></div>
+
+          <h2 style="margin:16px 0 8px; font-size:16px;">最近任务复盘</h2>
+          <div id="taskRunList" class="list"></div>
+        </section>
+      </div>
+    </div><!-- /tab-learning -->
   </div>
 
   <script>
@@ -410,6 +674,9 @@
     const addBtn = document.getElementById("addBtn");
     const cancelEditBtn = document.getElementById("cancelEditBtn");
     const importFile = document.getElementById("importFile");
+    const overviewGrid = document.getElementById("overviewGrid");
+    const serviceGrid = document.getElementById("serviceGrid");
+    const overviewToast = document.getElementById("overviewToast");
 
     let presets = [];
     let providers = [];
@@ -441,6 +708,47 @@
       toast.className = isError ? "" : "ok";
       if (isError) toast.style.color = "#bb3e03";
       else toast.style.color = "#2f6b35";
+    }
+
+    function overviewMessage(text, isError = false) {
+      overviewToast.textContent = text;
+      overviewToast.style.color = isError ? "#bb3e03" : "#2f6b35";
+    }
+
+    function renderOverview(payload) {
+      const cards = [
+        ["供应商总数", payload.providers_total],
+        ["已启用供应商", payload.providers_enabled],
+        ["虚拟 Key（active）", payload.keys_active],
+        ["待审批事项", payload.approvals_pending],
+        ["网关模型数", payload.gateway_models_total ?? "-"],
+      ];
+
+      overviewGrid.innerHTML = cards
+        .map(([label, value]) => `<div class="kpi"><strong>${label}</strong><span>${value}</span></div>`)
+        .join("");
+
+      const services = payload.service_status || [];
+      serviceGrid.innerHTML = services
+        .map((service) => {
+          const up = !!service.reachable;
+          return `
+            <div class="service-card">
+              <div><span class="status-dot ${up ? "status-up" : "status-down"}"></span><strong>${service.name}</strong></div>
+              <div class="meta" style="margin-top:6px;"><strong>URL:</strong> ${service.url}</div>
+              <div class="meta"><strong>状态:</strong> ${up ? "reachable" : "unreachable"}${service.detail ? ` · ${service.detail}` : ""}</div>
+            </div>
+          `;
+        })
+        .join("");
+    }
+
+    async function loadOverview() {
+      const resp = await apiFetch("/api/platform/overview");
+      if (!resp.ok) throw new Error("加载平台总览失败");
+      const payload = await resp.json();
+      renderOverview(payload);
+      overviewMessage("平台总览已更新");
     }
 
     function parseApps(value) {
@@ -976,10 +1284,18 @@
         document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         const tab = btn.getAttribute("data-tab");
+        document.getElementById("tab-overview").classList.toggle("hidden", tab !== "overview");
         document.getElementById("tab-providers").classList.toggle("hidden", tab !== "providers");
         document.getElementById("tab-keys").classList.toggle("hidden", tab !== "keys");
+        document.getElementById("tab-learning").classList.toggle("hidden", tab !== "learning");
+        if (tab === "overview") {
+          loadOverview().catch((err) => overviewMessage(err.message, true));
+        }
         if (tab === "keys") {
           loadKeys().catch((err) => keyMessage(err.message, true));
+        }
+        if (tab === "learning") {
+          loadLearningData().catch((err) => learningMessage(err.message, true));
         }
       });
     });
@@ -989,6 +1305,10 @@
     const keyCount = document.getElementById("keyCount");
     const keyList = document.getElementById("keyList");
     const newKeyReveal = document.getElementById("newKeyReveal");
+    const keySearchInput = document.getElementById("keySearchInput");
+    const keyFilterUserId = document.getElementById("keyFilterUserId");
+    const keyFilterProjectId = document.getElementById("keyFilterProjectId");
+    const keyFilterStatus = document.getElementById("keyFilterStatus");
 
     function keyMessage(text, isError = false) {
       keyToast.textContent = text;
@@ -1005,16 +1325,20 @@
       keys.forEach((k) => {
         const div = document.createElement("div");
         div.className = "item";
-        const expires = k.expires_at ? new Date(k.expires_at).toLocaleDateString("zh-CN") : "永不过期";
+        const expires = k.expire_at ? new Date(k.expire_at).toLocaleDateString("zh-CN") : "永不过期";
         const created = k.created_at ? new Date(k.created_at).toLocaleDateString("zh-CN") : "-";
         const maskedKey = k.key_masked || k.key_prefix || (k.key ? k.key.slice(0, 16) + "…" : "-");
         div.innerHTML = `
           <div class="item-head">
             <h3 style="font-size:14px;">${k.label || "(无标签)"}</h3>
-            <span class="pill">${expires}</span>
+            <span class="pill">${k.status || "active"} · ${expires}</span>
           </div>
           <div class="meta">
             <div><strong>Key：</strong><code>${maskedKey}</code></div>
+            <div><strong>成员：</strong>${k.user_id || "-"}</div>
+            <div><strong>项目：</strong>${k.project_id || "-"}</div>
+            <div><strong>范围：</strong>${k.scope || "-"}</div>
+            <div><strong>配额：</strong>${k.quota ?? "-"}</div>
             <div><strong>创建时间：</strong>${created}</div>
             <div><strong>ID：</strong>${k.id}</div>
           </div>
@@ -1027,7 +1351,12 @@
     }
 
     async function loadKeys() {
-      const resp = await apiFetch("/api/keys?limit=200");
+      const params = new URLSearchParams({ limit: "200" });
+      if (keySearchInput.value.trim()) params.set("q", keySearchInput.value.trim());
+      if (keyFilterUserId.value.trim()) params.set("user_id", keyFilterUserId.value.trim());
+      if (keyFilterProjectId.value.trim()) params.set("project_id", keyFilterProjectId.value.trim());
+      if (keyFilterStatus.value) params.set("status", keyFilterStatus.value);
+      const resp = await apiFetch(`/api/keys?${params.toString()}`);
       if (!resp.ok) throw new Error("加载 Key 列表失败");
       const payload = await resp.json();
       renderKeys(payload.items || []);
@@ -1035,8 +1364,16 @@
 
     async function issueKey() {
       const label = document.getElementById("keyLabel").value.trim();
+      const userId = document.getElementById("keyUserId").value.trim();
+      const projectId = document.getElementById("keyProjectId").value.trim();
+      const scopeValue = document.getElementById("keyScope").value.trim();
+      const quotaValue = document.getElementById("keyQuota").value.trim();
       const expiresDays = parseInt(document.getElementById("keyExpires").value, 10) || 0;
       const body = { label: label || "未命名 Key" };
+      if (userId) body.user_id = userId;
+      if (projectId) body.project_id = projectId;
+      if (scopeValue) body.scope = scopeValue;
+      if (quotaValue) body.quota = parseInt(quotaValue, 10);
       if (expiresDays > 0) body.expires_days = expiresDays;
       const resp = await apiFetch("/api/keys/issue", {
         method: "POST",
@@ -1060,7 +1397,7 @@
         </div>
       `;
       document.getElementById("keyLabel").value = "";
-      keyMessage(`Key 已生成：${data.label}`);
+      keyMessage(`Key 已生成，归属成员：${data.user_id || userId || "admin"}`);
       await loadKeys();
     }
 
@@ -1081,6 +1418,14 @@
     document.getElementById("refreshKeysBtn").addEventListener("click", async () => {
       try { await loadKeys(); keyMessage("已刷新"); } catch (err) { keyMessage(err.message, true); }
     });
+    [keySearchInput, keyFilterUserId, keyFilterProjectId].forEach((input) => {
+      input.addEventListener("input", () => {
+        loadKeys().catch((err) => keyMessage(err.message, true));
+      });
+    });
+    keyFilterStatus.addEventListener("change", () => {
+      loadKeys().catch((err) => keyMessage(err.message, true));
+    });
     keyList.addEventListener("click", async (e) => {
       const btn = e.target.closest("button[data-key-op]");
       if (!btn) return;
@@ -1093,16 +1438,205 @@
       }
     });
 
+    document.getElementById("refreshOverviewBtn").addEventListener("click", async () => {
+      try { await loadOverview(); } catch (err) { overviewMessage(err.message, true); }
+    });
+
+    document.getElementById("gotoProvidersBtn").addEventListener("click", () => {
+      document.querySelector('.tab-btn[data-tab="providers"]').click();
+    });
+
+    document.getElementById("gotoKeysBtn").addEventListener("click", () => {
+      document.querySelector('.tab-btn[data-tab="keys"]').click();
+    });
+
+    document.getElementById("gotoLearningBtn").addEventListener("click", () => {
+      document.querySelector('.tab-btn[data-tab="learning"]').click();
+    });
+
+    // ---- Learning loop ----
+    const learningToast = document.getElementById("learningToast");
+    const skillUpdateList = document.getElementById("skillUpdateList");
+    const skillUpdateCount = document.getElementById("skillUpdateCount");
+    const taskRunList = document.getElementById("taskRunList");
+
+    function learningMessage(text, isError = false) {
+      learningToast.textContent = text;
+      learningToast.style.color = isError ? "#bb3e03" : "#2f6b35";
+    }
+
+    function renderTaskRuns(items) {
+      taskRunList.innerHTML = "";
+      if (!items.length) {
+        taskRunList.innerHTML = '<div class="muted" style="padding:12px;">暂无任务复盘记录</div>';
+        return;
+      }
+      items.slice(0, 8).forEach((item) => {
+        const div = document.createElement("div");
+        div.className = "item";
+        div.innerHTML = `
+          <div class="item-head">
+            <h3 style="font-size:14px;">${item.task_title || "(未命名任务)"}</h3>
+            <span class="pill">${item.tool_type}</span>
+          </div>
+          <div class="meta">
+            <div><strong>成员：</strong>${item.user_id || "-"}</div>
+            <div><strong>总结：</strong>${item.summary || "-"}</div>
+            <div><strong>经验：</strong>${item.lessons_learned || "-"}</div>
+          </div>
+        `;
+        taskRunList.appendChild(div);
+      });
+    }
+
+    function renderSkillUpdates(items) {
+      skillUpdateCount.textContent = `${items.length} proposals`;
+      skillUpdateList.innerHTML = "";
+      if (!items.length) {
+        skillUpdateList.innerHTML = '<div class="muted" style="padding:12px;">暂无技能提案</div>';
+        return;
+      }
+      items.forEach((item) => {
+        const div = document.createElement("div");
+        div.className = "item";
+        const created = item.created_at ? new Date(item.created_at).toLocaleString("zh-CN") : "-";
+        div.innerHTML = `
+          <div class="item-head">
+            <h3 style="font-size:14px;">${item.proposed_skill_name || item.id}</h3>
+            <span class="pill">${item.status}</span>
+          </div>
+          <div class="meta">
+            <div><strong>来源任务：</strong>${item.task_run_id}</div>
+            <div><strong>目标技能：</strong>${item.skill_id || "(未应用)"}</div>
+            <div><strong>沉淀原因：</strong>${item.rationale || "-"}</div>
+            <div><strong>错误模式：</strong>${item.error_patterns || "-"}</div>
+            <div><strong>导出路径：</strong>${item.export_path || "-"}</div>
+            <div><strong>创建时间：</strong>${created}</div>
+          </div>
+          <div class="actions">
+            <button data-learning-op="apply" data-update-id="${item.id}" class="alt" ${item.status === "draft" ? "" : "disabled"}>应用提案</button>
+            <button data-learning-op="sync-local" data-update-id="${item.id}" class="alt" ${(item.status === "applied" || item.status === "synced") ? "" : "disabled"}>本地导出</button>
+            <button data-learning-op="sync-git" data-update-id="${item.id}" class="alt" ${(item.status === "applied" || item.status === "synced") ? "" : "disabled"}>同步 Git</button>
+          </div>
+        `;
+        skillUpdateList.appendChild(div);
+      });
+    }
+
+    async function loadLearningData() {
+      const [runsResp, updatesResp] = await Promise.all([
+        apiFetch("/api/task-runs?limit=50"),
+        apiFetch("/api/skill-updates?limit=100"),
+      ]);
+      if (!runsResp.ok) throw new Error("加载任务复盘失败");
+      if (!updatesResp.ok) throw new Error("加载技能提案失败");
+      const runsPayload = await runsResp.json();
+      const updatesPayload = await updatesResp.json();
+      renderTaskRuns(runsPayload.items || []);
+      renderSkillUpdates(updatesPayload.items || []);
+      learningMessage("闭环学习数据已更新");
+    }
+
+    async function reportTaskRun() {
+      const body = {
+        tool_type: document.getElementById("taskToolType").value,
+        user_id: document.getElementById("taskUserId").value.trim() || "unknown",
+        task_title: document.getElementById("taskTitle").value.trim(),
+        summary: document.getElementById("taskSummary").value.trim(),
+        error_log: document.getElementById("taskErrorLog").value.trim() || null,
+        lessons_learned: document.getElementById("taskLessons").value.trim() || null,
+        proposed_skill_name: document.getElementById("taskSkillName").value.trim() || null,
+        proposed_system_prompt: document.getElementById("taskSystemPrompt").value.trim() || null,
+        proposed_user_prompt_template: document.getElementById("taskUserPrompt").value.trim() || null,
+      };
+      if (!body.task_title || !body.summary) {
+        learningMessage("任务标题与完成总结必填", true);
+        return;
+      }
+
+      const resp = await apiFetch("/api/task-runs/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`任务上报失败: ${detail}`);
+      }
+      const payload = await resp.json();
+      learningMessage(`已生成提案: ${payload.skill_update.id}`);
+      await loadLearningData();
+    }
+
+    async function applySkillUpdate(updateId) {
+      const resp = await apiFetch(`/api/skill-updates/${updateId}/apply`, { method: "POST" });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`应用提案失败: ${detail}`);
+      }
+      learningMessage(`提案 ${updateId} 已应用`);
+      await loadLearningData();
+    }
+
+    async function syncSkillUpdate(updateId, mode) {
+      let body = { mode, auto_commit: false };
+      if (mode === "local") {
+        const path = prompt("本地导出路径", "/tmp/team_ai_skill_cache");
+        if (path === null) return;
+        body.path = path.trim();
+      } else {
+        const path = prompt("Git 仓库路径", "");
+        if (path === null) return;
+        const autoCommit = confirm("是否自动执行 git commit?");
+        body = { mode, path: path.trim(), auto_commit: autoCommit };
+      }
+
+      const resp = await apiFetch(`/api/skill-updates/${updateId}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`同步提案失败: ${detail}`);
+      }
+      learningMessage(`提案 ${updateId} 已同步 (${mode})`);
+      await loadLearningData();
+    }
+
+    document.getElementById("reportTaskBtn").addEventListener("click", async () => {
+      try { await reportTaskRun(); } catch (err) { learningMessage(err.message, true); }
+    });
+
+    document.getElementById("refreshLearningBtn").addEventListener("click", async () => {
+      try { await loadLearningData(); } catch (err) { learningMessage(err.message, true); }
+    });
+
+    skillUpdateList.addEventListener("click", async (e) => {
+      const btn = e.target.closest("button[data-learning-op]");
+      if (!btn || btn.disabled) return;
+      const op = btn.getAttribute("data-learning-op");
+      const updateId = btn.getAttribute("data-update-id");
+      try {
+        if (op === "apply") await applySkillUpdate(updateId);
+        if (op === "sync-local") await syncSkillUpdate(updateId, "local");
+        if (op === "sync-git") await syncSkillUpdate(updateId, "git");
+      } catch (err) {
+        learningMessage(err.message, true);
+      }
+    });
+
     (async function bootstrap() {
       try {
         const savedToken = localStorage.getItem("provider_console_admin_token") || "";
         if (savedToken) {
           adminTokenInput.value = savedToken;
         }
+        await loadOverview();
         await loadPresets();
         await loadProviders();
         resetForm();
-        message("Provider Console ready");
+        message("Team AI Admin Console ready");
       } catch (err) {
         message(err.message, true);
       }

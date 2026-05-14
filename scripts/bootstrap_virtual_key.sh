@@ -3,6 +3,8 @@ set -euo pipefail
 
 BASE_URL="${1:-http://localhost:4000}"
 MASTER_KEY="${LITELLM_MASTER_KEY:-}"
+# LiteLLM enforces globally unique key_alias, so generate a unique default alias.
+KEY_ALIAS="${KEY_ALIAS:-team-dev-default-$(date +%Y%m%d%H%M%S)}"
 
 if [[ -z "${MASTER_KEY}" ]]; then
   echo "[ERROR] LITELLM_MASTER_KEY env var is required." >&2
@@ -10,15 +12,15 @@ if [[ -z "${MASTER_KEY}" ]]; then
   exit 1
 fi
 
-PAYLOAD='{
-  "models": ["gpt-5", "gpt-4.1", "claude-sonnet-4", "gemini-2.5-pro"],
-  "duration": "30d",
-  "key_alias": "team-dev-default",
-  "metadata": {
-    "owner": "platform-team",
-    "scope": "engineering"
+PAYLOAD="{
+  \"models\": [\"gpt-5\", \"gpt-4.1\", \"claude-sonnet-4\", \"gemini-2.5-pro\"],
+  \"duration\": \"30d\",
+  \"key_alias\": \"${KEY_ALIAS}\",
+  \"metadata\": {
+    \"owner\": \"platform-team\",
+    \"scope\": \"engineering\"
   }
-}'
+}"
 
 echo "[INFO] Creating virtual key via ${BASE_URL}/key/generate"
 

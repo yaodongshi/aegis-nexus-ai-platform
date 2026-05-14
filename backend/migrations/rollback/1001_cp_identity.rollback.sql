@@ -1,0 +1,7 @@
+BEGIN;
+
+DROP TABLE IF EXISTS cp_membership;
+DROP TABLE IF EXISTS cp_user;
+DROP TABLE IF EXISTS cp_team;
+
+COMMIT;

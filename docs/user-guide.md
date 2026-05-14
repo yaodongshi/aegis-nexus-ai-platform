@@ -1,4 +1,6 @@
-# Team AI Platform 用户手册
+# ⚠️ 本文档内容已过期，请查阅新版：[user-guide-v2.md](user-guide-v2.md)
+
+# Team AI Platform 用户手册（已归档，仅供参考）
 
 > 版本：v1.0 · 适用于 team_ai_platform 当前主线版本
 
@@ -15,7 +17,8 @@
 7. [在 Codex CLI 中使用](#7-在-codex-cli-中使用)
 8. [在 OpenCode 中使用](#8-在-opencode-中使用)
 9. [在 Claude Code 中使用](#9-在-claude-code-中使用)
-10. [常见问题](#10-常见问题)
+10. [任务复盘与技能沉淀](#10-任务复盘与技能沉淀)
+11. [常见问题](#11-常见问题)
 
 ---
 
@@ -23,10 +26,10 @@
 
 | 服务 | 地址 | 说明 |
 |------|------|------|
-| Provider 管理台 | http://localhost:8000/provider-console | 添加/管理 LLM 厂商 Key |
+| Team AI 管理后台 | http://localhost:8000/admin | 管理供应商 Key、虚拟 Key 与后台配置 |
 | API 文档（Swagger） | http://localhost:8000/docs | 完整接口文档 |
-| LiteLLM 网关 | http://localhost:4000/v1 | 统一 OpenAI 兼容端点 |
-| Open WebUI 聊天 | http://localhost:9000 | 团队聊天界面 |
+| LiteLLM 网关 | http://localhost:4000/v1 | 内部统一模型网关，供 CLI/IDE/工作台复用 |
+| Open WebUI 团队工作台 | http://localhost:9000 | 团队成员统一聊天与协作入口 |
 
 ---
 
@@ -43,7 +46,7 @@
 编辑项目根目录 `.env` 文件：
 
 ```env
-TEAM_AI_ADMIN_TOKEN=your-long-random-secret-here
+TEAM_AI_PLATFORM_ADMIN_TOKEN=your-long-random-secret-here
 ```
 
 然后重启 backend：
@@ -54,7 +57,7 @@ docker compose restart backend
 
 ### 2.3 在管理台界面输入 Token
 
-访问 http://localhost:8000/provider-console，页面右上角输入 Admin Token 并点击「验证」。
+访问 http://localhost:8000/admin，页面右上角输入 Admin Token 并点击「验证」。
 
 ---
 
@@ -62,7 +65,7 @@ docker compose restart backend
 
 ### 方式一：通过 Web 管理台（推荐）
 
-1. 打开 http://localhost:8000/provider-console
+1. 打开 http://localhost:8000/admin
 2. 输入 Admin Token，点击「验证」
 3. 点击「+ 添加供应商」
 4. 在弹窗中选择预设厂商（如 `deepseek`），系统会自动填充接口地址
@@ -138,18 +141,23 @@ curl -s -X POST http://localhost:8000/api/providers/{provider_id}/discover-model
 
 ---
 
-## 4. 重启 LiteLLM 使配置生效
+## 4. 应用 LiteLLM 网关配置
 
-每次添加、修改或删除供应商后，需重启 LiteLLM 网关让新配置生效：
+每次添加、修改或删除供应商后，执行统一脚本应用网关配置：
 
 ```bash
 cd /path/to/team_ai_platform
-docker compose restart litellm
+bash scripts/apply_litellm_gateway.sh
 ```
 
-验证模型列表是否更新：
+可选：验证模型列表是否更新：
 
 ```bash
+export LITELLM_MASTER_KEY=sk-team-master-change-me
+cd /path/to/team_ai_platform
+bash scripts/apply_litellm_gateway.sh check
+
+# 或直接调用 models 接口
 curl -s http://localhost:4000/v1/models \
   -H "Authorization: Bearer sk-team-master-change-me" | python3 -m json.tool
 ```
@@ -168,6 +176,9 @@ curl -s -X POST http://localhost:8000/api/keys/issue \
   -H "X-Admin-Token: test-admin-token-secret" \
   -d '{
     "label": "张三的开发 Key",
+    "user_id": "u_zhangsan",
+    "project_id": "p_ai_platform",
+    "scope": "project:*",
     "expires_days": 30
   }' | python3 -m json.tool
 ```
@@ -176,15 +187,18 @@ curl -s -X POST http://localhost:8000/api/keys/issue \
 
 ```json
 {
-  "id": "key_abc123",
-  "key": "sk-virtual-a1b2c3d4e5f6g7h8",
+  "key_id": "key_abc123",
+  "key_secret": "sk-virtual-a1b2c3d4e5f6g7h8",
   "label": "张三的开发 Key",
-  "created_at": "2026-05-11T10:00:00Z",
-  "expires_at": "2026-06-10T10:00:00Z"
+  "user_id": "u_zhangsan",
+  "project_id": "p_ai_platform",
+  "status": "active",
+  "expire_at": "2026-06-10T10:00:00Z"
 }
 ```
 
-> `key` 字段即为用户使用的虚拟 Key，**仅在创建时可见，请妥善保存**。
+> `key_secret` 字段即为用户使用的虚拟 Key，**仅在创建时可见，请妥善保存**。
+> 建议为每个 Key 明确填写 `user_id` 和 `project_id`，方便后台按成员与项目治理。
 
 ### 5.2 查看所有虚拟 Key
 
@@ -338,7 +352,54 @@ claude --model anthropic-claude-3-7-sonnet-20250219 "帮我分析代码"
 
 ---
 
-## 10. 常见问题
+## 10. 任务复盘与技能沉淀
+
+### 10.1 管理台人工复盘
+
+1. 打开 http://localhost:8000/admin
+2. 进入「闭环学习」页签
+3. 填写任务总结、错误模式、经验沉淀与建议 Prompt
+4. 点击「上报并生成提案」
+5. 在提案列表中点击「应用提案」，再执行「本地导出」或「同步 Git」
+
+### 10.2 CLI/IDE 自动上报（推荐）
+
+在 `.env` 中配置 Agent Token（可与 Admin Token 分离）：
+
+```env
+TEAM_AI_PLATFORM_AGENT_TOKEN=your-agent-report-token
+```
+
+使用脚本上报任务：
+
+```bash
+cd /path/to/team_ai_platform
+export TEAM_AI_PLATFORM_AGENT_TOKEN=your-agent-report-token
+
+bash scripts/report_task_run.sh \
+  --tool codex \
+  --user u_zhangsan \
+  --title "修复供应商探测策略" \
+  --summary "完成低延迟优先与失败兜底" \
+  --error "timeout on backup endpoint" \
+  --lessons "先探测再切换，避免盲切" \
+  --skill-name "provider-probe-optimizer" \
+  --system-prompt "你是供应商连通性优化助手"
+```
+
+返回中包含：
+- `task_run.id`：任务复盘记录 ID
+- `skill_update.id`：自动创建的技能更新提案 ID
+
+### 10.3 同步策略建议
+
+- 本地离线使用：执行提案「本地导出」
+- 团队共享仓库：执行提案「同步 Git」
+- 推荐先应用提案，再执行导出/同步，保证版本一致
+
+---
+
+## 11. 常见问题
 
 ### Q1：添加供应商后 Open WebUI 仍然找不到新模型？
 
@@ -382,7 +443,7 @@ curl -s http://localhost:4000/v1/models \
 查看项目 `.env` 文件：
 
 ```bash
-grep TEAM_AI_ADMIN_TOKEN .env
+grep TEAM_AI_PLATFORM_ADMIN_TOKEN .env
 ```
 
 若未设置则使用默认值 `test-admin-token-secret`。

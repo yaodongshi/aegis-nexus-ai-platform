@@ -7,6 +7,7 @@ from itertools import count
 import json
 import logging
 import os
+from pathlib import Path
 import re
 from time import perf_counter
 from typing import Any
@@ -42,6 +43,8 @@ from .schemas import (
     ProviderRecord,
     ProviderSyncRequest,
     ProviderUpdateRequest,
+    RuntimeConfigApplyResponse,
+    RuntimeConfigPreviewResponse,
     PolicyRecord,
     PolicyUpsertRequest,
     SessionCreateRequest,
@@ -50,6 +53,10 @@ from .schemas import (
     SkillPublishRequest,
     SkillPublishResponse,
     SkillRecord,
+    V2KeyPolicyRecord,
+    V2KeyPolicyUpsertRequest,
+    V2VirtualKeyCreateRequest,
+    V2VirtualKeyRecord,
 )
 
 
@@ -65,6 +72,11 @@ class PlatformStore:
     providers: dict[str, ProviderRecord] = field(default_factory=dict)
     provider_secrets: dict[str, str] = field(default_factory=dict)
     provider_probe_logs: dict[str, list[ProviderProbeLogRecord]] = field(default_factory=dict)
+    v2_virtual_keys: dict[str, V2VirtualKeyRecord] = field(default_factory=dict)
+    v2_key_policies: dict[str, V2KeyPolicyRecord] = field(default_factory=dict)
+    # M1.3: Virtual Key Lifecycle - Audit logging and usage tracking
+    key_audit_logs: dict[str, list[dict]] = field(default_factory=dict)
+    key_usage_stats: dict[str, dict] = field(default_factory=dict)
     _model_seq: count = field(default_factory=lambda: count(1))
     _key_seq: count = field(default_factory=lambda: count(1))
     _skill_seq: count = field(default_factory=lambda: count(1))
@@ -73,6 +85,7 @@ class PlatformStore:
     _approval_seq: count = field(default_factory=lambda: count(1))
     _provider_seq: count = field(default_factory=lambda: count(1))
     _provider_probe_seq: count = field(default_factory=lambda: count(1))
+    _v2_key_policy_seq: count = field(default_factory=lambda: count(1))
     _schema_ensured: bool = False
 
     def __post_init__(self) -> None:
@@ -283,6 +296,50 @@ class PlatformStore:
         self.models[model_id] = updated
         return updated
 
+    # M1.1: Model alias methods
+    def list_model_aliases(self, provider: str | None = None, tier: str | None = None) -> list[dict]:
+        from .model_alias_presets import list_aliases
+        presets = list_aliases(provider=provider, tier=tier)
+        return [
+            {
+                "alias": p.alias,
+                "real_model_id": p.real_model_id,
+                "provider": p.provider,
+                "tier": p.tier,
+                "context_window": p.context_window,
+                "description": p.description,
+                "supported_capabilities": p.supported_capabilities,
+                "cost_per_1m_input_tokens": p.cost_per_1m_input_tokens,
+                "cost_per_1m_output_tokens": p.cost_per_1m_output_tokens,
+            }
+            for p in presets
+        ]
+
+    def get_model_by_alias(self, alias: str) -> dict | None:
+        from .model_alias_presets import lookup_by_alias
+        preset = lookup_by_alias(alias)
+        if preset is None:
+            return None
+        return {
+            "alias": preset.alias,
+            "real_model_id": preset.real_model_id,
+            "provider": preset.provider,
+            "tier": preset.tier,
+            "context_window": preset.context_window,
+            "description": preset.description,
+            "supported_capabilities": preset.supported_capabilities,
+            "cost_per_1m_input_tokens": preset.cost_per_1m_input_tokens,
+            "cost_per_1m_output_tokens": preset.cost_per_1m_output_tokens,
+        }
+
+    def get_alias_providers(self) -> list[str]:
+        from .model_alias_presets import get_providers
+        return get_providers()
+
+    def get_alias_tiers(self) -> list[str]:
+        from .model_alias_presets import get_tiers
+        return get_tiers()
+
     def issue_key(self, payload: KeyIssueRequest) -> tuple[KeyRecord, KeyIssueResponse]:
         now = datetime.now(UTC)
         key_id = self._next_id("key")
@@ -313,6 +370,9 @@ class PlatformStore:
                 )
                 row = cur.fetchone()
             record = self._key_from_row(row)
+            # Also store in memory for audit/stats queries (M1.3 requirement)
+            self.keys[key_id] = record
+            self._record_audit_log(key_id, "issued", payload.user_id, {"label": payload.label, "scope": payload.scope})
             response = KeyIssueResponse(
                 key_id=key_id,
                 key_secret=key_secret,
@@ -334,6 +394,7 @@ class PlatformStore:
             updated_at=now,
         )
         self.keys[key_id] = record
+        self._record_audit_log(key_id, "issued", payload.user_id, {"label": payload.label, "scope": payload.scope})
         response = KeyIssueResponse(
             key_id=key_id,
             key_secret=key_secret,
@@ -371,14 +432,358 @@ class PlatformStore:
                     (updated_at, key_id),
                 )
                 row = cur.fetchone()
-            return self._key_from_row(row) if row else None
+            record = self._key_from_row(row) if row else None
+            if record is not None:
+                self.keys[key_id] = record
+                self._record_audit_log(key_id, "revoked", None, {})
+            return record
 
         record = self.keys.get(key_id)
         if record is None:
             return None
         updated = record.model_copy(update={"status": "revoked", "updated_at": datetime.now(UTC)})
         self.keys[key_id] = updated
+        self._record_audit_log(key_id, "revoked", None, {})
         return updated
+
+    def create_v2_virtual_key(self, payload: V2VirtualKeyCreateRequest) -> tuple[V2VirtualKeyRecord, str]:
+        now = datetime.now(UTC)
+        key_id = self._next_id("key")
+        key_secret = f"sk-v2-{uuid4().hex}"
+        key_hash = sha256(key_secret.encode("utf-8")).hexdigest()
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO cp_virtual_key (
+                        key_id, key_hash, team_id, alias, owner_type, owner_id, status,
+                        expires_at, rotated_from, created_at, updated_at, revoked_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, 'active', %s, NULL, %s, %s, NULL)
+                    RETURNING key_id, team_id, alias, owner_type, owner_id, status,
+                              expires_at, rotated_from, created_at, updated_at, revoked_at
+                    """,
+                    (
+                        key_id,
+                        key_hash,
+                        payload.team_id,
+                        payload.alias,
+                        payload.owner_type,
+                        payload.owner_id,
+                        payload.expires_at,
+                        now,
+                        now,
+                    ),
+                )
+                row = cur.fetchone()
+            return self._v2_virtual_key_from_row(row), key_secret
+
+        record = V2VirtualKeyRecord(
+            key_id=key_id,
+            team_id=payload.team_id,
+            alias=payload.alias,
+            owner_type=payload.owner_type,
+            owner_id=payload.owner_id,
+            status="active",
+            expires_at=payload.expires_at,
+            rotated_from=None,
+            created_at=now,
+            updated_at=now,
+            revoked_at=None,
+        )
+        self.v2_virtual_keys[key_id] = record
+        return record, key_secret
+
+    def list_v2_virtual_keys(
+        self,
+        team_id: str | None = None,
+        owner_type: str | None = None,
+        owner_id: str | None = None,
+        status: str | None = None,
+    ) -> list[V2VirtualKeyRecord]:
+        if self._db_enabled:
+            where = []
+            args: list[Any] = []
+            if team_id:
+                where.append("team_id = %s")
+                args.append(team_id)
+            if owner_type:
+                where.append("owner_type = %s")
+                args.append(owner_type)
+            if owner_id:
+                where.append("owner_id = %s")
+                args.append(owner_id)
+            if status:
+                where.append("status = %s")
+                args.append(status)
+
+            where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT key_id, team_id, alias, owner_type, owner_id, status,
+                           expires_at, rotated_from, created_at, updated_at, revoked_at
+                    FROM cp_virtual_key
+                    {where_sql}
+                    ORDER BY created_at DESC
+                    """,
+                    tuple(args),
+                )
+                rows = cur.fetchall()
+            return [self._v2_virtual_key_from_row(row) for row in rows]
+
+        records = list(self.v2_virtual_keys.values())
+        if team_id:
+            records = [record for record in records if record.team_id == team_id]
+        if owner_type:
+            records = [record for record in records if record.owner_type == owner_type]
+        if owner_id:
+            records = [record for record in records if record.owner_id == owner_id]
+        if status:
+            records = [record for record in records if record.status == status]
+        return sorted(records, key=lambda item: item.created_at, reverse=True)
+
+    def get_v2_virtual_key(self, key_id: str) -> V2VirtualKeyRecord | None:
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT key_id, team_id, alias, owner_type, owner_id, status,
+                           expires_at, rotated_from, created_at, updated_at, revoked_at
+                    FROM cp_virtual_key
+                    WHERE key_id = %s
+                    """,
+                    (key_id,),
+                )
+                row = cur.fetchone()
+            return self._v2_virtual_key_from_row(row) if row else None
+        return self.v2_virtual_keys.get(key_id)
+
+    def revoke_v2_virtual_key(self, key_id: str) -> V2VirtualKeyRecord | None:
+        now = datetime.now(UTC)
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE cp_virtual_key
+                    SET status = 'revoked', updated_at = %s, revoked_at = %s
+                    WHERE key_id = %s
+                    RETURNING key_id, team_id, alias, owner_type, owner_id, status,
+                              expires_at, rotated_from, created_at, updated_at, revoked_at
+                    """,
+                    (now, now, key_id),
+                )
+                row = cur.fetchone()
+            return self._v2_virtual_key_from_row(row) if row else None
+
+        record = self.v2_virtual_keys.get(key_id)
+        if record is None:
+            return None
+        updated = record.model_copy(update={"status": "revoked", "updated_at": now, "revoked_at": now})
+        self.v2_virtual_keys[key_id] = updated
+        return updated
+
+    def rotate_v2_virtual_key(self, key_id: str) -> tuple[V2VirtualKeyRecord, str] | None:
+        old_key = self.get_v2_virtual_key(key_id)
+        if old_key is None:
+            return None
+        self.revoke_v2_virtual_key(key_id)
+        new_key, new_secret = self.create_v2_virtual_key(
+            V2VirtualKeyCreateRequest(
+                team_id=old_key.team_id,
+                alias=old_key.alias,
+                owner_type=old_key.owner_type,
+                owner_id=old_key.owner_id,
+                expires_at=old_key.expires_at,
+            )
+        )
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE cp_virtual_key
+                    SET rotated_from = %s
+                    WHERE key_id = %s
+                    RETURNING key_id, team_id, alias, owner_type, owner_id, status,
+                              expires_at, rotated_from, created_at, updated_at, revoked_at
+                    """,
+                    (key_id, new_key.key_id),
+                )
+                row = cur.fetchone()
+            return self._v2_virtual_key_from_row(row), new_secret
+
+        updated = new_key.model_copy(update={"rotated_from": key_id})
+        self.v2_virtual_keys[updated.key_id] = updated
+        return updated, new_secret
+
+    def upsert_v2_key_policy(self, key_id: str, payload: V2KeyPolicyUpsertRequest) -> V2KeyPolicyRecord | None:
+        now = datetime.now(UTC)
+        if self.get_v2_virtual_key(key_id) is None:
+            return None
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT policy_id
+                    FROM cp_key_policy
+                    WHERE key_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """,
+                    (key_id,),
+                )
+                existing = cur.fetchone()
+                if existing:
+                    cur.execute(
+                        """
+                        UPDATE cp_key_policy
+                        SET allowed_models = %s,
+                            denied_models = %s,
+                            quota_tokens_day = %s,
+                            quota_tokens_month = %s,
+                            rate_limit_rpm = %s,
+                            burst_limit = %s,
+                            emergency_block = %s,
+                            updated_at = %s
+                        WHERE policy_id = %s
+                        RETURNING policy_id, key_id, allowed_models, denied_models,
+                                  quota_tokens_day, quota_tokens_month, rate_limit_rpm,
+                                  burst_limit, emergency_block, effective_from, effective_to,
+                                  created_at, updated_at
+                        """,
+                        (
+                            payload.allowed_models,
+                            payload.denied_models,
+                            payload.quota_tokens_day,
+                            payload.quota_tokens_month,
+                            payload.rate_limit_rpm,
+                            payload.burst_limit,
+                            payload.emergency_block,
+                            now,
+                            existing[0],
+                        ),
+                    )
+                    row = cur.fetchone()
+                else:
+                    cur.execute(
+                        """
+                        INSERT INTO cp_key_policy (
+                            policy_id, key_id, allowed_models, denied_models,
+                            quota_tokens_day, quota_tokens_month, rate_limit_rpm,
+                            burst_limit, emergency_block, effective_from, effective_to,
+                            created_at, updated_at
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, %s, %s)
+                        RETURNING policy_id, key_id, allowed_models, denied_models,
+                                  quota_tokens_day, quota_tokens_month, rate_limit_rpm,
+                                  burst_limit, emergency_block, effective_from, effective_to,
+                                  created_at, updated_at
+                        """,
+                        (
+                            self._next_id("v2policy"),
+                            key_id,
+                            payload.allowed_models,
+                            payload.denied_models,
+                            payload.quota_tokens_day,
+                            payload.quota_tokens_month,
+                            payload.rate_limit_rpm,
+                            payload.burst_limit,
+                            payload.emergency_block,
+                            now,
+                            now,
+                            now,
+                        ),
+                    )
+                    row = cur.fetchone()
+            return self._v2_key_policy_from_row(row)
+
+        existing = self.v2_key_policies.get(key_id)
+        policy_id = existing.policy_id if existing else self._next_id("v2policy")
+        created_at = existing.created_at if existing else now
+        record = V2KeyPolicyRecord(
+            policy_id=policy_id,
+            key_id=key_id,
+            allowed_models=payload.allowed_models,
+            denied_models=payload.denied_models,
+            quota_tokens_day=payload.quota_tokens_day,
+            quota_tokens_month=payload.quota_tokens_month,
+            rate_limit_rpm=payload.rate_limit_rpm,
+            burst_limit=payload.burst_limit,
+            emergency_block=payload.emergency_block,
+            effective_from=existing.effective_from if existing else now,
+            effective_to=None,
+            created_at=created_at,
+            updated_at=now,
+        )
+        self.v2_key_policies[key_id] = record
+        return record
+
+    def get_v2_key_policy(self, key_id: str) -> V2KeyPolicyRecord | None:
+        if self._db_enabled:
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT policy_id, key_id, allowed_models, denied_models,
+                           quota_tokens_day, quota_tokens_month, rate_limit_rpm,
+                           burst_limit, emergency_block, effective_from, effective_to,
+                           created_at, updated_at
+                    FROM cp_key_policy WHERE key_id = %s
+                    """,
+                    (key_id,),
+                )
+                row = cur.fetchone()
+            return self._v2_key_policy_from_row(row) if row else None
+        return self.v2_key_policies.get(key_id)
+
+    # M1.3: Audit log and usage tracking methods
+    def _record_audit_log(self, key_id: str, action: str, user_id: str | None, details: dict) -> None:
+        entry = {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "action": action,
+            "user_id": user_id,
+            "details": details,
+        }
+        if key_id not in self.key_audit_logs:
+            self.key_audit_logs[key_id] = []
+        self.key_audit_logs[key_id].append(entry)
+
+    def _update_usage_stats(self, key_id: str, model_id: str, tokens_used: int) -> None:
+        if key_id not in self.key_usage_stats:
+            self.key_usage_stats[key_id] = {
+                "total_calls": 0,
+                "total_tokens_used": 0,
+                "calls_by_model": {},
+                "tokens_by_model": {},
+                "first_used_at": None,
+                "last_used_at": None,
+            }
+        stats = self.key_usage_stats[key_id]
+        now_str = datetime.now(UTC).isoformat()
+        stats["total_calls"] += 1
+        stats["total_tokens_used"] += tokens_used
+        stats["calls_by_model"][model_id] = stats["calls_by_model"].get(model_id, 0) + 1
+        stats["tokens_by_model"][model_id] = stats["tokens_by_model"].get(model_id, 0) + tokens_used
+        if stats["first_used_at"] is None:
+            stats["first_used_at"] = now_str
+        stats["last_used_at"] = now_str
+
+    def get_key_audit_log(self, key_id: str, limit: int | None = None) -> list[dict] | None:
+        if key_id not in self.keys:
+            return None
+        entries = self.key_audit_logs.get(key_id, [])
+        if limit is not None:
+            entries = entries[-limit:]
+        return entries
+
+    def get_key_usage_stats(self, key_id: str) -> dict | None:
+        if key_id not in self.keys:
+            return None
+        return self.key_usage_stats.get(key_id, {
+            "total_calls": 0,
+            "total_tokens_used": 0,
+            "calls_by_model": {},
+            "tokens_by_model": {},
+            "first_used_at": None,
+            "last_used_at": None,
+        })
 
     def publish_skill(self, payload: SkillPublishRequest) -> SkillPublishResponse:
         now = datetime.now(UTC)
@@ -822,6 +1227,7 @@ class PlatformStore:
         )
         self.providers[provider_id] = record
         self.provider_secrets[provider_id] = payload.api_key
+        self._sync_providers_to_litellm_config()
         return record
 
     def get_provider(self, provider_id: str) -> ProviderRecord | None:
@@ -899,6 +1305,7 @@ class PlatformStore:
             self.provider_secrets[provider_id] = data["api_key"]
             updated = updated.model_copy(update={"api_key_masked": self._mask_key(data["api_key"])})
         self.providers[provider_id] = updated
+        self._sync_providers_to_litellm_config()
         return updated
 
     def delete_provider(self, provider_id: str) -> bool:
@@ -913,6 +1320,8 @@ class PlatformStore:
         existed = provider_id in self.providers
         self.providers.pop(provider_id, None)
         self.provider_secrets.pop(provider_id, None)
+        if existed:
+            self._sync_providers_to_litellm_config()
         return existed
 
     def sync_provider(self, provider_id: str, payload: ProviderSyncRequest) -> ProviderRecord | None:
@@ -1156,6 +1565,7 @@ class PlatformStore:
             "skill": self._skill_seq,
             "session": self._session_seq,
             "policy": self._policy_seq,
+            "v2policy": self._v2_key_policy_seq,
             "approval": self._approval_seq,
             "provider": self._provider_seq,
             "provider_probe": self._provider_probe_seq,
@@ -1365,6 +1775,49 @@ class PlatformStore:
                 ON backend_provider_probe_logs(provider_id, probed_at DESC)
                 """
             )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS cp_virtual_keys (
+                    key_id TEXT PRIMARY KEY,
+                    key_hash TEXT NOT NULL UNIQUE,
+                    team_id TEXT NOT NULL,
+                    alias TEXT,
+                    owner_type TEXT NOT NULL,
+                    owner_id TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    expires_at TIMESTAMPTZ,
+                    rotated_from TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    revoked_at TIMESTAMPTZ
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_cp_virtual_keys_team_owner_status
+                ON cp_virtual_keys(team_id, owner_type, owner_id, status)
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS cp_key_policies (
+                    policy_id TEXT PRIMARY KEY,
+                    key_id TEXT NOT NULL UNIQUE REFERENCES cp_virtual_keys(key_id) ON DELETE CASCADE,
+                    allowed_models JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    denied_models JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    quota_tokens_day BIGINT,
+                    quota_tokens_month BIGINT,
+                    rate_limit_rpm INTEGER,
+                    burst_limit INTEGER,
+                    emergency_block BOOLEAN NOT NULL DEFAULT FALSE,
+                    effective_from TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    effective_to TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
 
     @staticmethod
     def _model_from_row(row: tuple[Any, ...]) -> ModelRecord:
@@ -1458,6 +1911,42 @@ class PlatformStore:
             reason=row[6],
             created_at=row[7],
             updated_at=row[8],
+        )
+
+    @staticmethod
+    def _v2_virtual_key_from_row(row: tuple[Any, ...]) -> V2VirtualKeyRecord:
+        return V2VirtualKeyRecord(
+            key_id=row[0],
+            team_id=row[1],
+            alias=row[2],
+            owner_type=row[3],
+            owner_id=row[4],
+            status=row[5],
+            expires_at=row[6],
+            rotated_from=row[7],
+            created_at=row[8],
+            updated_at=row[9],
+            revoked_at=row[10],
+        )
+
+    @staticmethod
+    def _v2_key_policy_from_row(row: tuple[Any, ...]) -> V2KeyPolicyRecord:
+        allowed_models = row[2] if isinstance(row[2], list) else []
+        denied_models = row[3] if isinstance(row[3], list) else []
+        return V2KeyPolicyRecord(
+            policy_id=row[0],
+            key_id=row[1],
+            allowed_models=allowed_models,
+            denied_models=denied_models,
+            quota_tokens_day=row[4],
+            quota_tokens_month=row[5],
+            rate_limit_rpm=row[6],
+            burst_limit=row[7],
+            emergency_block=row[8],
+            effective_from=row[9],
+            effective_to=row[10],
+            created_at=row[11],
+            updated_at=row[12],
         )
 
     def _get_provider_secret(self, provider_id: str) -> str | None:
@@ -1558,80 +2047,143 @@ class PlatformStore:
             probed_at=row[4],
         )
 
+    def preview_litellm_runtime_config(self) -> RuntimeConfigPreviewResponse:
+        config, _env_vars, provider_count, observability_backend = self._build_litellm_runtime_artifacts()
+        model_count = len(config.get("model_list", []))
+        return RuntimeConfigPreviewResponse(
+            provider_count=provider_count,
+            model_count=model_count,
+            observability_backend=observability_backend,
+            config=config,
+        )
+
+    def apply_litellm_runtime_config(self, output_dir: str | None = None) -> RuntimeConfigApplyResponse:
+        config, env_vars, provider_count, observability_backend = self._build_litellm_runtime_artifacts()
+        config_path, env_path = self._resolve_litellm_output_paths(output_dir)
+
+        with config_path.open("w", encoding="utf-8") as config_file:
+            yaml.safe_dump(config, config_file, default_flow_style=False, sort_keys=False)
+
+        with env_path.open("w", encoding="utf-8") as env_file:
+            env_file.write("# LiteLLM provider API keys - auto-generated by backend\n")
+            env_file.write("# This file is generated by backend/app/store.py from control-plane state\n")
+            for key, value in sorted(env_vars.items()):
+                env_file.write(f"{key}={value}\n")
+
+        return RuntimeConfigApplyResponse(
+            provider_count=provider_count,
+            model_count=len(config.get("model_list", [])),
+            observability_backend=observability_backend,
+            config_path=str(config_path),
+            env_path=str(env_path),
+            written_at=datetime.now(UTC),
+        )
+
     def _sync_providers_to_litellm_config(self) -> None:
-        """Sync enabled providers from backend_providers to litellm/config.yaml"""
+        """Sync enabled providers from control-plane state to litellm config files."""
         try:
-            providers = self.list_providers(enabled=True)
-            model_list: list[dict[str, Any]] = []
-            env_vars: dict[str, str] = {}
+            self.apply_litellm_runtime_config()
+        except Exception as exc:
+            logging.getLogger(__name__).error("Failed to sync providers to litellm config: %s", exc)
 
-            for provider in providers:
-                if "open_webui" not in (provider.apps or []):
-                    continue
+    def _build_litellm_runtime_artifacts(self) -> tuple[dict[str, Any], dict[str, str], int, str]:
+        providers = sorted(self.list_providers(enabled=True), key=lambda item: item.id)
+        model_entries: list[dict[str, Any]] = []
+        env_vars: dict[str, str] = {}
+        included_provider_count = 0
 
-                secret = self._get_provider_secret(provider.id)
-                if not secret:
-                    continue
+        for provider in providers:
+            secret = self._get_provider_secret(provider.id)
+            if not secret:
+                continue
 
-                env_var_name = f"TEAM_AI_LITELLM_PROVIDER_{provider.id.upper()}_API_KEY"
-                env_vars[env_var_name] = secret
+            included_provider_count += 1
+            env_var_name = f"TEAM_AI_LITELLM_PROVIDER_{provider.id.upper()}_API_KEY"
+            env_vars[env_var_name] = secret
 
-                discovered_models = self._discover_provider_model_ids(provider, secret)
-                if not discovered_models:
-                    discovered_models = [self._default_provider_model_id(provider)]
+            for model_id in self._provider_model_ids_from_state(provider):
+                model_entries.append(
+                    {
+                        "model_name": self._build_provider_model_alias(provider, model_id),
+                        "litellm_params": {
+                            "model": self._build_litellm_model_ref(provider, model_id),
+                            "api_base": provider.base_url,
+                            "api_key": f"os.environ/{env_var_name}",
+                        },
+                    }
+                )
 
-                for discovered_model in discovered_models:
-                    model_list.append(
-                        {
-                            "model_name": self._build_provider_model_alias(provider, discovered_model),
-                            "litellm_params": {
-                                "model": self._build_litellm_model_ref(provider, discovered_model),
-                                "api_base": provider.base_url,
-                                "api_key": f"os.environ/{env_var_name}",
-                            },
-                        }
-                    )
+        model_entries = sorted(model_entries, key=lambda entry: str(entry.get("model_name", "")))
+        observability_backend, litellm_settings, observability_env_vars = self._build_observability_profile()
+        env_vars.update(observability_env_vars)
 
-            config_path = "/app/litellm/config.yaml"
-            env_path = "/app/litellm/.env.litellm"
+        config = {
+            "model_list": model_entries,
+            "general_settings": {
+                "master_key": "os.environ/LITELLM_MASTER_KEY",
+            },
+        }
+        if litellm_settings:
+            config["litellm_settings"] = litellm_settings
+        return config, env_vars, included_provider_count, observability_backend
 
-            if not os.path.exists(os.path.dirname(config_path)):
-                local_dir = os.path.join(os.path.dirname(__file__), "../../litellm")
-                if os.path.exists(local_dir):
-                    config_path = os.path.join(local_dir, "config.yaml")
-                    env_path = os.path.join(local_dir, ".env.litellm")
+    @staticmethod
+    def _build_observability_profile() -> tuple[str, dict[str, Any], dict[str, str]]:
+        backend = os.getenv("TEAM_AI_PLATFORM_OBSERVABILITY_BACKEND", "langfuse").strip().lower() or "langfuse"
+        if backend in {"none", "off", "disabled"}:
+            return "none", {}, {}
 
-            existing_config = {}
-            if os.path.exists(config_path):
-                with open(config_path, "r") as f:
-                    existing_config = yaml.safe_load(f) or {}
+        if backend == "langfuse":
+            public_key = os.getenv("LANGFUSE_PUBLIC_KEY", "").strip()
+            secret_key = os.getenv("LANGFUSE_SECRET_KEY", "").strip()
+            if not public_key or not secret_key:
+                return "none", {}, {}
 
-            static_models = existing_config.get("model_list", [])
-            static_model_list = [
-                m
-                for m in static_models
-                if not self._is_team_ai_managed_model_entry(m)
-            ]
-            # De-duplicate by model_name to keep config deterministic.
-            deduped_models: dict[str, dict[str, Any]] = {}
-            for model in static_model_list + model_list:
-                model_name = model.get("model_name")
-                if isinstance(model_name, str) and model_name:
-                    deduped_models[model_name] = model
+            env_vars = {
+                "LANGFUSE_PUBLIC_KEY": public_key,
+                "LANGFUSE_SECRET_KEY": secret_key,
+            }
+            host = os.getenv("LANGFUSE_HOST", "").strip()
+            if host:
+                env_vars["LANGFUSE_HOST"] = host
 
-            existing_config["model_list"] = list(deduped_models.values())
+            return "langfuse", {
+                "success_callback": ["langfuse"],
+                "failure_callback": ["langfuse"],
+            }, env_vars
 
-            with open(config_path, "w") as f:
-                yaml.dump(existing_config, f, default_flow_style=False, sort_keys=False)
+        if backend == "helicone":
+            helicone_key = os.getenv("HELICONE_API_KEY", "").strip()
+            if not helicone_key:
+                return "none", {}, {}
 
-            with open(env_path, "w") as f:
-                f.write("# LiteLLM provider API keys - auto-generated by backend\n")
-                f.write("# This file is generated by backend/app/store.py when providers are created/updated\n")
-                for key, value in sorted(env_vars.items()):
-                    f.write(f"{key}={value}\n")
+            env_vars = {"HELICONE_API_KEY": helicone_key}
+            helicone_base_url = os.getenv("HELICONE_BASE_URL", "").strip()
+            if helicone_base_url:
+                env_vars["HELICONE_BASE_URL"] = helicone_base_url
 
-        except Exception as e:
-            logging.getLogger(__name__).error(f"Failed to sync providers to litellm config: {e}")
+            return "helicone", {
+                "success_callback": ["helicone"],
+                "failure_callback": ["helicone"],
+            }, env_vars
+
+        return "none", {}, {}
+
+    def _resolve_litellm_output_paths(self, output_dir: str | None = None) -> tuple[Path, Path]:
+        if output_dir:
+            target_dir = Path(output_dir)
+        else:
+            target_dir = Path(__file__).resolve().parents[2] / "litellm"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        return target_dir / "config.yaml", target_dir / ".env.litellm"
+
+    def _provider_model_ids_from_state(self, provider: ProviderRecord) -> list[str]:
+        raw_model_ids = provider.metadata.get("model_ids") if isinstance(provider.metadata, dict) else None
+        if isinstance(raw_model_ids, list):
+            normalized = sorted({str(item).strip() for item in raw_model_ids if str(item).strip()})
+            if normalized:
+                return normalized
+        return [self._default_provider_model_id(provider)]
 
     def _discover_provider_model_ids(self, provider: ProviderRecord, api_key: str) -> list[str]:
         endpoint = self._models_endpoint(provider.base_url)

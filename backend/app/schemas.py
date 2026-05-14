@@ -64,6 +64,7 @@ class KeyIssueRequest(BaseModel):
 class KeyRecord(BaseModel):
     id: str
     key_hash: str
+    label: str | None = None
     user_id: str | None = None
     project_id: str | None = None
     scope: str
@@ -77,6 +78,9 @@ class KeyRecord(BaseModel):
 class KeyIssueResponse(BaseModel):
     key_id: str
     key_secret: str
+    label: str | None = None
+    user_id: str | None = None
+    project_id: str | None = None
     status: str
     expire_at: datetime | None = None
 
@@ -308,3 +312,188 @@ class ProviderBatchDeleteResponse(BaseModel):
     deleted: int = 0
     deleted_ids: list[str] = Field(default_factory=list)
     skipped_ids: list[str] = Field(default_factory=list)
+
+
+class RuntimeConfigApplyRequest(BaseModel):
+    output_dir: str | None = None
+
+
+class RuntimeConfigPreviewResponse(BaseModel):
+    provider_count: int = 0
+    model_count: int = 0
+    observability_backend: str = "none"
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class RuntimeConfigApplyResponse(BaseModel):
+    provider_count: int = 0
+    model_count: int = 0
+    observability_backend: str = "none"
+    config_path: str
+    env_path: str
+    written_at: datetime
+
+
+class PlatformServiceStatus(BaseModel):
+    name: str
+    url: str
+    reachable: bool
+
+
+class V2VirtualKeyCreateRequest(BaseModel):
+    team_id: str
+    alias: str | None = None
+    owner_type: Literal["user", "project", "service"] = "user"
+    owner_id: str
+    expires_at: datetime | None = None
+    quota_tokens: int | None = None
+    rate_limit_rpm: int | None = None
+
+
+class V2VirtualKeyRecord(BaseModel):
+    key_id: str
+    team_id: str
+    alias: str | None = None
+    owner_type: str
+    owner_id: str
+    status: Literal["active", "revoked"] = "active"
+    expires_at: datetime | None = None
+    rotated_from: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    revoked_at: datetime | None = None
+
+
+class V2VirtualKeyCreateResponse(BaseModel):
+    key: V2VirtualKeyRecord
+    key_secret: str
+
+
+class V2VirtualKeyRotateResponse(BaseModel):
+    old_key_id: str
+    new_key: V2VirtualKeyRecord
+    new_key_secret: str
+
+
+class V2KeyPolicyUpsertRequest(BaseModel):
+    allowed_models: list[str] = Field(default_factory=list)
+    denied_models: list[str] = Field(default_factory=list)
+    quota_tokens_day: int | None = None
+    quota_tokens_month: int | None = None
+    rate_limit_rpm: int | None = None
+    burst_limit: int | None = None
+    emergency_block: bool = False
+
+
+class V2KeyPolicyRecord(BaseModel):
+    policy_id: str
+    key_id: str
+    allowed_models: list[str] = Field(default_factory=list)
+    denied_models: list[str] = Field(default_factory=list)
+    quota_tokens_day: int | None = None
+    quota_tokens_month: int | None = None
+    rate_limit_rpm: int | None = None
+    burst_limit: int | None = None
+    emergency_block: bool = False
+    effective_from: datetime
+    effective_to: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    detail: str | None = None
+
+
+class PlatformOverviewResponse(BaseModel):
+    providers_total: int = 0
+    providers_enabled: int = 0
+    keys_total: int = 0
+    keys_active: int = 0
+    keys_revoked: int = 0
+    skills_total: int = 0
+    sessions_total: int = 0
+    policies_total: int = 0
+    approvals_total: int = 0
+    approvals_pending: int = 0
+    gateway_models_total: int | None = None
+    service_status: list[PlatformServiceStatus] = Field(default_factory=list)
+
+
+class TaskRunReportRequest(BaseModel):
+    tool_type: Literal["claude_code", "codex", "other"] = "codex"
+    user_id: str = "unknown"
+    task_title: str
+    summary: str
+    error_log: str | None = None
+    lessons_learned: str | None = None
+    proposed_skill_name: str | None = None
+    proposed_system_prompt: str | None = None
+    proposed_user_prompt_template: str | None = None
+
+
+class TaskRunRecord(BaseModel):
+    id: str
+    tool_type: Literal["claude_code", "codex", "other"] = "codex"
+    user_id: str
+    task_title: str
+    summary: str
+    error_log: str | None = None
+    lessons_learned: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SkillUpdateRecord(BaseModel):
+    id: str
+    task_run_id: str
+    skill_id: str | None = None
+    proposed_skill_name: str | None = None
+    proposed_system_prompt: str | None = None
+    proposed_user_prompt_template: str | None = None
+    rationale: str
+    error_patterns: str | None = None
+    status: Literal["draft", "applied", "synced", "rejected"] = "draft"
+    export_path: str | None = None
+    git_commit_hash: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class TaskRunReportResponse(BaseModel):
+    task_run: TaskRunRecord
+    skill_update: SkillUpdateRecord
+
+
+class SkillUpdateSyncRequest(BaseModel):
+    mode: Literal["local", "git"] = "local"
+    path: str | None = None
+    auto_commit: bool = True
+
+
+# M1.3: Virtual Key Lifecycle - Audit Log and Usage Tracking
+class KeyAuditLogEntry(BaseModel):
+    """Single audit log entry for a virtual key"""
+    timestamp: datetime
+    action: Literal["issued", "used", "revoked", "expired"]
+    user_id: str | None = None
+    model_id: str | None = None
+    tokens_used: int | None = None
+    status: str | None = None
+    details: dict[str, Any] | None = None
+
+
+class KeyUsageStats(BaseModel):
+    """Usage statistics for a virtual key"""
+    key_id: str
+    total_calls: int = 0
+    total_tokens_used: int = 0
+    calls_by_model: dict[str, int] = {}  # model_id -> call count
+    tokens_by_model: dict[str, int] = {}  # model_id -> token count
+    first_used_at: datetime | None = None
+    last_used_at: datetime | None = None
+    usage_by_hour: dict[str, int] = {}  # "YYYY-MM-DD HH:00" -> call count
+
+
+class KeyAuditLogResponse(BaseModel):
+    """Response for key audit log query"""
+    key_id: str
+    entries: list[KeyAuditLogEntry]
+    total_entries: int
