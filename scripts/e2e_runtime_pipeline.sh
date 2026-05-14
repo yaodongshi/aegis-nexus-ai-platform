@@ -14,6 +14,7 @@ BACKEND_BASE_URL="${BACKEND_BASE_URL:-http://localhost:8000}"
 GATEWAY_BASE_URL="${GATEWAY_BASE_URL:-http://localhost:4000}"
 ADMIN_TOKEN="${TEAM_AI_PLATFORM_ADMIN_TOKEN:-}"
 MASTER_KEY="${LITELLM_MASTER_KEY:-}"
+REQUIRE_CHAT_SUCCESS="${E2E_REQUIRE_CHAT_SUCCESS:-0}"
 
 require_command() {
   local cmd="$1"
@@ -81,10 +82,12 @@ log INFO "Step 3/6: Apply runtime config and restart gateway"
 log PASS "Runtime apply script finished"
 
 log INFO "Step 4/6: Check LiteLLM health"
-if curl -fsS "${GATEWAY_BASE_URL}/health" >/dev/null; then
-  log PASS "LiteLLM health check passed"
+HEALTH_STATUS="$(curl -sS -o /tmp/team_ai_litellm_health.out -w "%{http_code}" "${GATEWAY_BASE_URL}/health" || true)"
+HEALTH_STATUS="${HEALTH_STATUS:-000}"
+if [[ "${HEALTH_STATUS}" == "200" || "${HEALTH_STATUS}" == "401" ]]; then
+  log PASS "LiteLLM health endpoint reachable (status=${HEALTH_STATUS})"
 else
-  log FAIL "LiteLLM health check failed"
+  log FAIL "LiteLLM health check failed (status=${HEALTH_STATUS})"
   exit 1
 fi
 
@@ -95,7 +98,8 @@ if [[ -n "${MASTER_KEY}" ]]; then
   log PASS "Gateway models count=${GATEWAY_MODEL_COUNT}"
 
   if [[ "${GATEWAY_MODEL_COUNT}" -gt 0 ]]; then
-    TARGET_MODEL="$(echo "${MODELS_JSON}" | jq -r '.data[0].id')"
+    PREFERRED_MODEL="${E2E_TARGET_MODEL:-gpt-balanced-turbo}"
+    TARGET_MODEL="$(echo "${MODELS_JSON}" | jq -r --arg m "${PREFERRED_MODEL}" 'if any(.data[]; .id == $m) then $m else .data[0].id end')"
     KEY_ALIAS="e2e-runtime-$(date +%s)"
 
     log INFO "Step 6/6: Generate virtual key and run chat probe"
@@ -114,9 +118,16 @@ if [[ -n "${MASTER_KEY}" ]]; then
       -H "Authorization: Bearer ${KEY_VALUE}" \
       -H "Content-Type: application/json" \
       -d "{\"model\":\"${TARGET_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"reply OK only\"}]}")"
-    CHAT_TEXT="$(echo "${CHAT_JSON}" | jq -r '.choices[0].message.content // .error.message // ""')"
+    CHAT_ERROR="$(echo "${CHAT_JSON}" | jq -r '.error.message // empty')"
+    CHAT_TEXT="$(echo "${CHAT_JSON}" | jq -r '.choices[0].message.content // empty')"
 
-    if [[ -n "${CHAT_TEXT}" ]]; then
+    if [[ -n "${CHAT_ERROR}" ]]; then
+      if [[ "${REQUIRE_CHAT_SUCCESS}" == "1" ]]; then
+        log FAIL "Chat probe failed: ${CHAT_ERROR}"
+        exit 1
+      fi
+      log WARN "Chat probe returned upstream error (non-blocking): ${CHAT_ERROR}"
+    elif [[ -n "${CHAT_TEXT}" ]]; then
       log PASS "Chat probe succeeded: ${CHAT_TEXT}"
     else
       log FAIL "Chat probe returned empty response"

@@ -15,6 +15,7 @@ cp .env.example .env
 ```
 
 2. Fill provider keys in `.env` (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, etc.).
+	If `open_webui` image pull fails, set `OPEN_WEBUI_IMAGE=ghcr.io/open-webui/open-webui:latest`.
 
 3. Start services:
 
@@ -40,6 +41,9 @@ Pipeline checks:
 - LiteLLM restart and health
 - `/v1/models` check
 - virtual key generation and `/v1/chat/completions` probe
+
+By default, chat probe upstream errors are non-blocking (useful when provider keys are not fully configured).
+Set `E2E_REQUIRE_CHAT_SUCCESS=1` to enforce strict chat success.
 
 Reports are written to `reports/`.
 

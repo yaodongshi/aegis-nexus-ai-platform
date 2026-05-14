@@ -12,7 +12,18 @@ curl -sS "${BACKEND_URL}" | cat
 echo "[INFO] Admin console entrypoint: http://localhost:8000/admin"
 
 echo "[INFO] Checking LiteLLM..."
-curl -sS "${LITELLM_URL}" | cat
+if [[ -n "${LITELLM_MASTER_KEY:-}" ]]; then
+	curl -sS "${LITELLM_URL}" \
+		-H "Authorization: Bearer ${LITELLM_MASTER_KEY}" | cat
+else
+	LITELLM_STATUS_CODE=$(curl -sS -o /tmp/team_ai_litellm_health.out -w "%{http_code}" "${LITELLM_URL}")
+	if [[ "${LITELLM_STATUS_CODE}" == "200" || "${LITELLM_STATUS_CODE}" == "401" ]]; then
+		cat /tmp/team_ai_litellm_health.out | cat
+	else
+		echo "[ERROR] LiteLLM health check failed with status ${LITELLM_STATUS_CODE}" >&2
+		exit 1
+	fi
+fi
 
 if [[ -n "${LITELLM_MASTER_KEY:-}" ]]; then
 	echo ""

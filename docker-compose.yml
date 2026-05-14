@@ -91,7 +91,7 @@ services:
       - team_ai_net
 
   open_webui:
-    image: ghcr.io/open-webui/open-webui:main
+    image: ${OPEN_WEBUI_IMAGE:-ghcr.io/open-webui/open-webui:latest}
     container_name: team-open-webui
     restart: unless-stopped
     environment:

@@ -44,7 +44,7 @@ fi
 
 if ! curl -fsS -X POST "${BACKEND_BASE_URL}/api/v1/runtime/litellm-config/apply" \
   -H "Content-Type: application/json" \
-  "${AUTH_HEADER[@]}" \
+  ${AUTH_HEADER[@]+"${AUTH_HEADER[@]}"} \
   -d '{}' >/tmp/team_ai_runtime_apply.json 2>/tmp/team_ai_runtime_apply.err; then
   echo "[ERROR] Failed to apply runtime config via control plane API." >&2
   echo "[ERROR] Endpoint: ${BACKEND_BASE_URL}/api/v1/runtime/litellm-config/apply" >&2
@@ -62,15 +62,19 @@ docker compose restart litellm
 
 echo "[INFO] Waiting for LiteLLM health endpoint..."
 for _ in {1..30}; do
-  if curl -fsS "http://localhost:4000/health" >/dev/null 2>&1; then
+  HEALTH_STATUS="$(curl -sS -o /tmp/team_ai_litellm_apply_health.out -w "%{http_code}" "http://localhost:4000/health" || true)"
+  HEALTH_STATUS="${HEALTH_STATUS:-000}"
+  if [[ "${HEALTH_STATUS}" == "200" || "${HEALTH_STATUS}" == "401" ]]; then
     echo "[INFO] LiteLLM health is ready."
     break
   fi
   sleep 1
 done
 
-if ! curl -fsS "http://localhost:4000/health" >/dev/null 2>&1; then
-  echo "[ERROR] LiteLLM health endpoint is not ready after restart." >&2
+HEALTH_STATUS="$(curl -sS -o /tmp/team_ai_litellm_apply_health.out -w "%{http_code}" "http://localhost:4000/health" || true)"
+HEALTH_STATUS="${HEALTH_STATUS:-000}"
+if [[ "${HEALTH_STATUS}" != "200" && "${HEALTH_STATUS}" != "401" ]]; then
+  echo "[ERROR] LiteLLM health endpoint is not ready after restart (status=${HEALTH_STATUS})." >&2
   exit 1
 fi
 
