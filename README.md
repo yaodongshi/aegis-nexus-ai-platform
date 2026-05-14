@@ -43,6 +43,16 @@ Pipeline checks:
 
 Reports are written to `reports/`.
 
+## Continuous Delivery Check
+
+GitHub Actions workflow is provided at `.github/workflows/ci-runtime-delivery.yml`.
+It validates:
+- shell script syntax
+- runtime control-plane tests
+- Docker Compose configuration render
+
+This workflow runs on each push to `main` and on every pull request.
+
 ## Fast Local Validation
 
 ```bash

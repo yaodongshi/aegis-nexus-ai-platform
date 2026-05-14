@@ -1,0 +1,45 @@
+name: CI Runtime Delivery
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Prepare env for compose validation
+        run: |
+          cp .env.example .env
+
+      - name: Validate shell scripts syntax
+        run: |
+          bash -n scripts/start.sh \
+            scripts/apply_litellm_gateway.sh \
+            scripts/e2e_runtime_pipeline.sh \
+            scripts/healthcheck.sh
+
+      - name: Run backend runtime tests
+        run: |
+          pytest -q backend/tests/test_runtime_config.py backend/tests/test_control_plane_v2.py
+
+      - name: Validate Docker Compose file
+        run: |
+          docker compose config > /tmp/team_ai_compose_config.out
+          test -s /tmp/team_ai_compose_config.out
