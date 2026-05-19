@@ -13,7 +13,7 @@ const STATUS_STYLE: Record<string, React.CSSProperties> = {
 };
 
 export default function GovernancePage() {
-  const [tab, setTab] = useState<GovTab>('policies');
+  const [tab, setTab] = useState<GovTab>('learning');
 
   // ── Policies ──
   const [policies, setPolicies] = useState<any[]>([]);
@@ -367,9 +367,35 @@ export default function GovernancePage() {
     finally { setSubmittingApproval(false); }
   };
 
+  const successActionCount = evolutionActions.filter((item) => item.status === 'success').length;
+  const failedActionCount = evolutionActions.filter((item) => item.status === 'failed').length;
+  const draftSkillCount = conflictUpdates.length;
+  const templateCount = actionTemplates.length;
+
   return (
     <div>
-      <h1 style={{ marginBottom: 16 }}>治理中心</h1>
+      <h1 style={{ marginBottom: 8 }}>治理中心</h1>
+      <div style={{ marginBottom: 16, color: '#667085', fontSize: 13 }}>
+        统一编排 Team AI Platform 的策略、审批、学习闭环与模板化执行。
+      </div>
+
+      <div
+        style={{
+          marginBottom: 16,
+          borderRadius: 10,
+          padding: 14,
+          background: 'linear-gradient(120deg, #e6f4ff 0%, #f6ffed 100%)',
+          border: '1px solid #d6e4ff',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          gap: 10,
+        }}
+      >
+        <MetricBox label="成功动作" value={successActionCount} color="#52c41a" />
+        <MetricBox label="失败动作" value={failedActionCount} color="#ff4d4f" />
+        <MetricBox label="草案提案" value={draftSkillCount} color="#1677ff" />
+        <MetricBox label="模板数量" value={templateCount} color="#722ed1" />
+      </div>
       {error && <div style={{ color: 'red', marginBottom: 12, padding: '8px 12px', background: '#fff2f0', borderRadius: 4 }}>{error}<button onClick={() => setError('')} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', color: '#ff4d4f' }}>✕</button></div>}
 
       <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid #f0f0f0' }}>
@@ -682,3 +708,12 @@ const tableStyle: React.CSSProperties = { width: '100%', background: '#fff', bor
 const thStyle: React.CSSProperties = { padding: '12px 16px', textAlign: 'left', fontSize: 13, color: '#888', fontWeight: 500 };
 const tdStyle: React.CSSProperties = { padding: '12px 16px', fontSize: 14 };
 const panelStyle: React.CSSProperties = { background: '#fff', borderRadius: 8, padding: 14, boxShadow: '0 1px 4px rgba(0,0,0,.08)' };
+
+function MetricBox({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div style={{ background: '#fff', borderRadius: 8, padding: '12px 14px', border: '1px solid #eef2f6' }}>
+      <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color }}>{value}</div>
+    </div>
+  );
+}

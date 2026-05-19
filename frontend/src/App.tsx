@@ -46,7 +46,6 @@ export default function App() {
           ['/skills/:skillId', <SkillDetailPage />],
           ['/knowledge', <KnowledgePage />],
           ['/observe', <ObservePage />],
-          ['/users', <SettingsPage />],
           ['/settings', <SettingsPage />],
           ['/profile', <ProfilePage />],
           ['/keys', <KeysPage />],
@@ -73,6 +72,7 @@ export default function App() {
             element={<Navigate to="/governance" replace />}
           />
         ))}
+        <Route path="/users" element={<Navigate to="/settings" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
