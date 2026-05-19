@@ -437,4 +437,8 @@ export const learningApi = {
       `/evolution/rag-to-agent/workflows?limit=${limit}&offset=${offset}`,
     ),
   evolutionOverview: () => govGet<any>('/evolution/overview'),
+  evolutionActions: (limit = 50, offset = 0) =>
+    govGet<{ items: any[]; total: number }>(
+      `/evolution/actions?limit=${limit}&offset=${offset}`,
+    ),
 };

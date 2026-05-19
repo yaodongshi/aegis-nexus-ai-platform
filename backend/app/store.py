@@ -29,6 +29,7 @@ except Exception:  # pragma: no cover - optional runtime dependency
 
 from .schemas import (
     EvolutionOverviewResponse,
+    EvolutionActionLogRecord,
     ApprovalRecord,
     ApprovalSubmitRequest,
     AgentWorkflowRecord,
@@ -139,6 +140,7 @@ class PlatformStore:
     skill_bundles: dict[str, SkillBundleRecord] = field(default_factory=dict)
     team_skill_sync_rules: dict[str, TeamSkillSyncRuleRecord] = field(default_factory=dict)
     agent_workflows: dict[str, AgentWorkflowRecord] = field(default_factory=dict)
+    evolution_action_logs: dict[str, EvolutionActionLogRecord] = field(default_factory=dict)
     # M1.3: Virtual Key Lifecycle - Audit logging and usage tracking
     key_audit_logs: dict[str, list[dict]] = field(default_factory=dict)
     key_usage_stats: dict[str, dict] = field(default_factory=dict)
@@ -159,6 +161,7 @@ class PlatformStore:
     _bundle_seq: count = field(default_factory=lambda: count(1))
     _rule_set_seq: count = field(default_factory=lambda: count(1))
     _workflow_seq: count = field(default_factory=lambda: count(1))
+    _evolution_action_seq: count = field(default_factory=lambda: count(1))
     _schema_ensured: bool = False
     _qdrant_client: Any | None = None
     _qdrant_init_attempted: bool = False
@@ -1852,6 +1855,18 @@ class PlatformStore:
             except Exception:
                 logging.getLogger(__name__).warning("Skill bundle upload parse failed")
 
+        self._append_evolution_action_log(
+            action_name="upload_skill_bundle",
+            actor=payload.uploaded_by,
+            detail="skill bundle uploaded",
+            payload={
+                "bundle_id": record.bundle_id,
+                "team_id": record.team_id,
+                "skill_id": record.skill_id,
+                "version": record.version,
+            },
+        )
+
         return SkillBundleUploadResponse(bundle=record, detail="skill bundle uploaded")
 
     def download_skill_bundle(self, skill_id: str, version: str | None = None) -> SkillBundleRecord | None:
@@ -1883,6 +1898,15 @@ class PlatformStore:
             generated_at=datetime.now(UTC),
         )
         self.team_skill_sync_rules[rule.rule_set_id] = rule
+        self._append_evolution_action_log(
+            action_name="generate_team_skill_sync_rules",
+            detail="sync rule generated",
+            payload={
+                "team_id": team_id,
+                "rule_set_id": rule.rule_set_id,
+                "skill_count": len(rule.synced_skill_ids),
+            },
+        )
         return TeamSkillSyncRuleResponse(rule=rule, detail="sync rule generated")
 
     def sync_team_skills(
@@ -1896,13 +1920,24 @@ class PlatformStore:
             raise ValueError("Rule set not found for team")
 
         detail = "dry run only" if payload.dry_run else "team skills synchronized"
-        return TeamSkillSyncApplyResponse(
+        response = TeamSkillSyncApplyResponse(
             team_id=team_id,
             rule_set_id=rule_set_id,
             dry_run=payload.dry_run,
             synced_skill_ids=rule.synced_skill_ids,
             detail=detail,
         )
+        self._append_evolution_action_log(
+            action_name="sync_team_skills",
+            detail=detail,
+            payload={
+                "team_id": team_id,
+                "rule_set_id": rule_set_id,
+                "dry_run": payload.dry_run,
+                "synced_skill_count": len(rule.synced_skill_ids),
+            },
+        )
+        return response
 
     def ingest_gateway_knowledge(self, payload: GatewayKnowledgeIngestRequest) -> GatewayKnowledgeIngestResponse:
         transformed = PassiveRagIngestRequest(
@@ -1932,13 +1967,24 @@ class PlatformStore:
             ],
         )
         result = self.ingest_passive_rag_items(transformed)
-        return GatewayKnowledgeIngestResponse(
+        response = GatewayKnowledgeIngestResponse(
             received=result.received,
             accepted=result.accepted,
             rejected=result.rejected,
             created_knowledge_ids=result.created_knowledge_ids,
             rejected_items=result.rejected_items,
         )
+        self._append_evolution_action_log(
+            action_name="ingest_gateway_knowledge",
+            actor=payload.created_by,
+            detail="gateway knowledge ingested",
+            payload={
+                "received": response.received,
+                "accepted": response.accepted,
+                "rejected": response.rejected,
+            },
+        )
+        return response
 
     def summarize_rag_to_skill(self, payload: RagSummarizeToSkillRequest) -> RagSummarizeToSkillResponse:
         docs = self.list_knowledge(status="active")[: payload.limit]
@@ -2000,13 +2046,24 @@ class PlatformStore:
                 self.skill_updates[record.id] = record
             generated_update_ids.append(update_id)
 
-        return RagSummarizeToSkillResponse(
+        response = RagSummarizeToSkillResponse(
             scope=payload.scope,
             scanned=len(docs),
             generated_updates=len(generated_update_ids),
             generated_update_ids=generated_update_ids,
             detail="rag summary to skill finished",
         )
+        self._append_evolution_action_log(
+            action_name="summarize_rag_to_skill",
+            actor=payload.created_by,
+            detail=response.detail,
+            payload={
+                "scope": payload.scope,
+                "scanned": response.scanned,
+                "generated_updates": response.generated_updates,
+            },
+        )
+        return response
 
     def generate_agent_workflow_from_rag(
         self,
@@ -2036,6 +2093,15 @@ class PlatformStore:
             updated_at=now,
         )
         self.agent_workflows[workflow.workflow_id] = workflow
+        self._append_evolution_action_log(
+            action_name="generate_agent_workflow",
+            actor=payload.created_by,
+            detail="workflow generated",
+            payload={
+                "scope": payload.scope,
+                "workflow_id": workflow.workflow_id,
+            },
+        )
         return GenerateAgentWorkflowResponse(workflow=workflow, detail="workflow generated")
 
     def optimize_agent_workflow(
@@ -2060,6 +2126,15 @@ class PlatformStore:
             }
         )
         self.agent_workflows[workflow_id] = optimized
+        self._append_evolution_action_log(
+            action_name="optimize_agent_workflow",
+            detail="workflow optimized",
+            payload={
+                "workflow_id": workflow_id,
+                "feedback_window": payload.feedback_window,
+                "optimization_count": optimized.optimization_count,
+            },
+        )
         return OptimizeAgentWorkflowResponse(workflow=optimized, detail="workflow optimized")
 
     def get_evolution_overview(self) -> EvolutionOverviewResponse:
@@ -2087,6 +2162,46 @@ class PlatformStore:
             agent_workflow_total=len(self.agent_workflows),
             optimized_workflow_total=optimized_workflow_total,
         )
+
+    def list_evolution_action_logs(
+        self,
+        *,
+        action_name: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[EvolutionActionLogRecord]:
+        records = sorted(
+            self.evolution_action_logs.values(),
+            key=lambda item: item.created_at,
+            reverse=True,
+        )
+        if action_name:
+            records = [item for item in records if item.action_name == action_name]
+        if status:
+            records = [item for item in records if item.status == status]
+        return records[offset : offset + limit]
+
+    def _append_evolution_action_log(
+        self,
+        *,
+        action_name: str,
+        status: str = "success",
+        actor: str | None = None,
+        detail: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> EvolutionActionLogRecord:
+        record = EvolutionActionLogRecord(
+            action_id=self._next_id("evolution_action"),
+            action_name=action_name,
+            status="failed" if status == "failed" else "success",
+            actor=(actor or "system").strip() or "system",
+            detail=detail,
+            payload=payload or {},
+            created_at=datetime.now(UTC),
+        )
+        self.evolution_action_logs[record.action_id] = record
+        return record
 
     def get_hook_secret_status(self) -> HookSecretStatusResponse:
         self._ensure_schema_for_request()
@@ -4208,6 +4323,7 @@ class PlatformStore:
             "bundle": self._bundle_seq,
             "ruleset": self._rule_set_seq,
             "workflow": self._workflow_seq,
+            "evolution_action": self._evolution_action_seq,
         }
         return f"{prefix}_{next(seq_map[prefix])}"
 

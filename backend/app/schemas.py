@@ -841,6 +841,16 @@ class EvolutionOverviewResponse(BaseModel):
     optimized_workflow_total: int
 
 
+class EvolutionActionLogRecord(BaseModel):
+    action_id: str
+    action_name: str
+    status: Literal["success", "failed"] = "success"
+    actor: str | None = None
+    detail: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
 class HookSecretStatusResponse(BaseModel):
     source: Literal["env", "db", "none"] = "none"
     masked_secret: str | None = None

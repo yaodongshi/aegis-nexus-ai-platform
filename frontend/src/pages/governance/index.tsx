@@ -44,6 +44,7 @@ export default function GovernancePage() {
   const [agentWorkflows, setAgentWorkflows] = useState<any[]>([]);
   const [evolutionResult, setEvolutionResult] = useState<any>(null);
   const [evolutionOverview, setEvolutionOverview] = useState<any>(null);
+  const [evolutionActions, setEvolutionActions] = useState<any[]>([]);
 
   const [error, setError] = useState('');
 
@@ -52,13 +53,14 @@ export default function GovernancePage() {
   const loadLearning = async () => {
     setLearningLoading(true);
     try {
-      const [reposResp, hooksResp, updatesResp, secretStatus, workflowsResp, overviewResp] = await Promise.all([
+      const [reposResp, hooksResp, updatesResp, secretStatus, workflowsResp, overviewResp, actionsResp] = await Promise.all([
         learningApi.gitRepos(),
         learningApi.hookEvents(),
         learningApi.skillUpdates({ status: 'draft', limit: 30, offset: 0 }),
         learningApi.hookSecretStatus(),
         learningApi.listAgentWorkflows(20, 0),
         learningApi.evolutionOverview(),
+        learningApi.evolutionActions(30, 0),
       ]);
       setGitRepos(reposResp.items || []);
       setHookEvents(hooksResp.items || []);
@@ -66,6 +68,7 @@ export default function GovernancePage() {
       setHookSecretStatus(secretStatus);
       setAgentWorkflows(workflowsResp.items || []);
       setEvolutionOverview(overviewResp);
+      setEvolutionActions(actionsResp.items || []);
     } catch (e: any) {
       setError(e.message || 'Learning 数据加载失败');
     } finally {
@@ -467,6 +470,35 @@ export default function GovernancePage() {
           </div>
 
           <div style={{ ...panelStyle }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>进化动作流水线</div>
+            <table style={tableStyle}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #f0f0f0' }}>
+                  {['动作', '状态', '执行人', '摘要', '时间'].map(h => <th key={h} style={thStyle}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {evolutionActions.map((a) => (
+                  <tr key={a.action_id} style={{ borderBottom: '1px solid #f9f9f9' }}>
+                    <td style={tdStyle}>{a.action_name}</td>
+                    <td style={tdStyle}>
+                      <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 3, ...(a.status === 'success' ? STATUS_STYLE.approved : STATUS_STYLE.rejected) }}>
+                        {a.status}
+                      </span>
+                    </td>
+                    <td style={{ ...tdStyle, fontSize: 12 }}>{a.actor || '-'}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: '#666', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {a.detail || '-'}
+                    </td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: '#888' }}>{a.created_at ? new Date(a.created_at).toLocaleString() : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {evolutionActions.length === 0 && <div style={{ color: '#aaa', marginTop: 10 }}>暂无进化动作记录</div>}
+          </div>
+
+          <div style={{ ...panelStyle, marginTop: 12 }}>
             <div style={{ fontWeight: 600, marginBottom: 8 }}>最近 Hook 事件</div>
             <table style={tableStyle}>
               <thead>
