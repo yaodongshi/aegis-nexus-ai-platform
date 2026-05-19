@@ -18,11 +18,14 @@ class PageResponse(BaseModel, Generic[T]):
 class ModelRecord(BaseModel):
     id: str
     provider: str
+    provider_id: str | None = None
+    upstream_model: str | None = None
     name: str
     endpoint: str
     context_window: int
     cost_tier: str
     availability: str = "active"
+    deployment_status: str = "active"
     tags: list[str] = Field(default_factory=list)
     labels: dict[str, Any] = Field(default_factory=dict)
     quota: int | None = None
@@ -32,23 +35,51 @@ class ModelRecord(BaseModel):
 
 class ModelRegisterRequest(BaseModel):
     provider: str
+    provider_id: str | None = None
+    upstream_model: str | None = None
     name: str
     endpoint: str
     context_window: int
     cost_tier: str
+    deployment_status: str = "active"
     tags: list[str] = Field(default_factory=list)
     labels: dict[str, Any] = Field(default_factory=dict)
     quota: int | None = None
 
 
+class ModelBatchRegisterRequest(BaseModel):
+    models: list[ModelRegisterRequest] = Field(default_factory=list)
+
+
+class ModelBatchRegisterResponse(BaseModel):
+    total: int = 0
+    registered: int = 0
+    skipped: int = 0
+    items: list[ModelRecord] = Field(default_factory=list)
+
+
 class ModelUpdateRequest(BaseModel):
+    provider_id: str | None = None
+    upstream_model: str | None = None
     endpoint: str | None = None
     context_window: int | None = None
     cost_tier: str | None = None
     availability: str | None = None
+    deployment_status: str | None = None
     tags: list[str] | None = None
     labels: dict[str, Any] | None = None
     quota: int | None = None
+
+
+class ModelBatchDeleteRequest(BaseModel):
+    model_ids: list[str] = Field(default_factory=list)
+
+
+class ModelBatchDeleteResponse(BaseModel):
+    total: int = 0
+    deleted: int = 0
+    deleted_ids: list[str] = Field(default_factory=list)
+    missing_ids: list[str] = Field(default_factory=list)
 
 
 class KeyIssueRequest(BaseModel):
@@ -71,6 +102,7 @@ class KeyRecord(BaseModel):
     expire_at: datetime | None = None
     quota: int | None = None
     status: Literal["active", "revoked"] = "active"
+    litellm_key_id: str | None = None  # LiteLLM 分配的 key 标识，用于撤销
     created_at: datetime
     updated_at: datetime
 
@@ -85,32 +117,63 @@ class KeyIssueResponse(BaseModel):
     expire_at: datetime | None = None
 
 
-class SkillPublishRequest(BaseModel):
-    package_name: str
-    version: str
-    skill_yaml: str
-    policy_json: str
-    tests_archive: str | None = None
+class SkillCreateRequest(BaseModel):
+    name: str
+    description: str = ""
+    system_prompt: str = ""
+    category: str = "general"
+    tags: list[str] = Field(default_factory=list)
+
+
+class SkillUpdateRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    system_prompt: str | None = None
+    category: str | None = None
+    tags: list[str] | None = None
+    status: str | None = None
 
 
 class SkillRecord(BaseModel):
     id: str
     name: str
-    version: str
-    owner_id: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
-    policy: dict[str, Any] = Field(default_factory=dict)
-    dependencies: list[dict[str, Any]] = Field(default_factory=list)
-    signature: str | None = None
-    status: Literal["dev", "stage", "prod", "rollback"] = "dev"
+    description: str = ""
+    system_prompt: str = ""
+    category: str = "general"
+    tags: list[str] = Field(default_factory=list)
+    status: str = "active"
     created_at: datetime
     updated_at: datetime
 
 
-class SkillPublishResponse(BaseModel):
+class SkillSearchStatusResponse(BaseModel):
+    mode: Literal["vector", "lexical", "warming"] = "lexical"
+    qdrant_enabled: bool = False
+    qdrant_url: str
+    qdrant_collection: str
+    embedding_model: str
+    embedding_available: bool = False
+    last_search_mode: Literal["vector", "lexical"] | None = None
+    last_search_latency_ms: int | None = None
+    last_search_result_count: int | None = None
+    last_error: str | None = None
+    next_retry_at: datetime | None = None
+
+
+class SkillPackFile(BaseModel):
+    path: str
+    description: str = ""
+    content: str
+
+
+class SkillPackExportResponse(BaseModel):
+    protocol_version: str = "1.0"
+    target: str
     skill_id: str
-    version: str
-    lifecycle_status: str
+    skill_name: str
+    generated_at: datetime
+    install_hint: str
+    files: list[SkillPackFile] = Field(default_factory=list)
 
 
 class SessionRecord(BaseModel):
@@ -184,6 +247,12 @@ class ProviderPresetRecord(BaseModel):
     suggested_apps: list[str] = Field(default_factory=list)
 
 
+class ProviderModelMappingRecord(BaseModel):
+    alias: str
+    upstream_model: str
+    note: str | None = None
+
+
 class ProviderCreateRequest(BaseModel):
     name: str
     provider_type: str
@@ -196,6 +265,9 @@ class ProviderCreateRequest(BaseModel):
     notes: str | None = None
     enabled: bool = True
     metadata: dict[str, Any] = Field(default_factory=dict)
+    model_mappings: list[ProviderModelMappingRecord] = Field(
+        default_factory=list
+    )
 
 
 class ProviderUpdateRequest(BaseModel):
@@ -206,10 +278,13 @@ class ProviderUpdateRequest(BaseModel):
     preset_key: str | None = None
     scope: Literal["app", "unified"] | None = None
     apps: list[str] | None = None
-    api_format: Literal["openai", "anthropic", "openai_responses"] | None = None
+    api_format: (
+        Literal["openai", "anthropic", "openai_responses"] | None
+    ) = None
     notes: str | None = None
     enabled: bool | None = None
     metadata: dict[str, Any] | None = None
+    model_mappings: list[ProviderModelMappingRecord] | None = None
 
 
 class ProviderRecord(BaseModel):
@@ -224,6 +299,9 @@ class ProviderRecord(BaseModel):
     notes: str | None = None
     enabled: bool = True
     metadata: dict[str, Any] = Field(default_factory=dict)
+    model_mappings: list[ProviderModelMappingRecord] = Field(
+        default_factory=list
+    )
     api_key_masked: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -231,6 +309,7 @@ class ProviderRecord(BaseModel):
 
 class ProviderSyncRequest(BaseModel):
     target_apps: list[str] = Field(default_factory=list)
+    sync_models: bool = True
 
 
 class ProviderModelDiscoveryResponse(BaseModel):
@@ -238,6 +317,26 @@ class ProviderModelDiscoveryResponse(BaseModel):
     endpoint: str
     models: list[str] = Field(default_factory=list)
     fetched_at: datetime
+
+
+class ProviderLiveModelDiscoveryRequest(BaseModel):
+    provider_type: str
+    base_url: str
+    api_key: str
+
+
+class ProviderLiveModelDiscoveryResponse(BaseModel):
+    endpoint: str
+    models: list[str] = Field(default_factory=list)
+    fetched_at: datetime
+
+
+class ProviderGatewaySyncResponse(BaseModel):
+    ok: bool = False
+    model_count: int = 0
+    endpoint: str | None = None
+    detail: str | None = None
+    synced_at: datetime
 
 
 class ProviderProbeRequest(BaseModel):
@@ -334,6 +433,15 @@ class RuntimeConfigApplyResponse(BaseModel):
     written_at: datetime
 
 
+class ClientRuntimeConfigResponse(BaseModel):
+    app: str
+    gateway_base_url: str
+    model_count: int = 0
+    models: list[str] = Field(default_factory=list)
+    config: dict[str, Any] = Field(default_factory=dict)
+    generated_at: datetime
+
+
 class PlatformServiceStatus(BaseModel):
     name: str
     url: str
@@ -373,6 +481,16 @@ class V2VirtualKeyRotateResponse(BaseModel):
     old_key_id: str
     new_key: V2VirtualKeyRecord
     new_key_secret: str
+
+
+class V2OwnershipViewItem(BaseModel):
+    team_id: str
+    owner_type: str
+    owner_id: str
+    total_keys: int = 0
+    active_keys: int = 0
+    revoked_keys: int = 0
+    last_updated_at: datetime | None = None
 
 
 class V2KeyPolicyUpsertRequest(BaseModel):
@@ -417,6 +535,23 @@ class PlatformOverviewResponse(BaseModel):
     service_status: list[PlatformServiceStatus] = Field(default_factory=list)
 
 
+class PlatformRuntimeHealthCheck(BaseModel):
+    name: str
+    ok: bool
+    blocking: bool = True
+    detail: str | None = None
+
+
+class PlatformRuntimeHealthResponse(BaseModel):
+    ok: bool = False
+    litellm_base: str
+    checked_at: datetime
+    model_count: int = 0
+    chat_model_count: int = 0
+    embedding_model_count: int = 0
+    checks: list[PlatformRuntimeHealthCheck] = Field(default_factory=list)
+
+
 class TaskRunReportRequest(BaseModel):
     tool_type: Literal["claude_code", "codex", "other"] = "codex"
     user_id: str = "unknown"
@@ -445,6 +580,7 @@ class SkillUpdateRecord(BaseModel):
     id: str
     task_run_id: str
     skill_id: str | None = None
+    git_repo_id: str | None = None
     proposed_skill_name: str | None = None
     proposed_system_prompt: str | None = None
     proposed_user_prompt_template: str | None = None
@@ -465,7 +601,273 @@ class TaskRunReportResponse(BaseModel):
 class SkillUpdateSyncRequest(BaseModel):
     mode: Literal["local", "git"] = "local"
     path: str | None = None
-    auto_commit: bool = True
+    repo_id: str | None = None
+    auto_commit: bool | None = None
+
+
+class GitRepoCreateRequest(BaseModel):
+    name: str
+    path: str
+    branch: str = "main"
+    auto_commit: bool = False
+    make_active: bool = True
+
+
+class GitRepoUpdateRequest(BaseModel):
+    name: str | None = None
+    path: str | None = None
+    branch: str | None = None
+    auto_commit: bool | None = None
+
+
+class GitRepoRecord(BaseModel):
+    id: str
+    name: str
+    path: str
+    branch: str = "main"
+    auto_commit: bool = False
+    is_active: bool = False
+    last_synced_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class GitRepoProbeResponse(BaseModel):
+    repo_id: str
+    path: str
+    path_exists: bool
+    is_git_repo: bool
+    git_available: bool
+    configured_branch: str
+    active_branch: str | None = None
+    configured_branch_exists: bool = False
+    error: str | None = None
+
+
+class SkillHookReportRequest(BaseModel):
+    repository: str
+    repo_id: str | None = None
+    branch: str = "main"
+    commit_sha: str
+    changed_files: list[str] = Field(default_factory=list)
+    event_id: str | None = None
+    author: str | None = None
+    event_time: datetime | None = None
+
+
+class SkillHookReportResponse(BaseModel):
+    hook_event_id: str
+    idempotency_key: str
+    created: bool = True
+    linked_skill_ids: list[str] = Field(default_factory=list)
+    detail: str | None = None
+
+
+class SkillHookEventRecord(BaseModel):
+    hook_event_id: str
+    event_id: str | None = None
+    idempotency_key: str
+    repo_id: str | None = None
+    repository: str
+    branch: str
+    commit_sha: str
+    changed_files: list[str] = Field(default_factory=list)
+    linked_skill_ids: list[str] = Field(default_factory=list)
+    author: str | None = None
+    event_time: datetime | None = None
+    created_at: datetime
+
+
+class PassiveRagIngestItem(BaseModel):
+    source_type: Literal["commit", "pull_request", "issue", "session", "task", "custom"] = "custom"
+    source_id: str
+    title: str | None = None
+    content: str
+    repository: str | None = None
+    project_id: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    quality_score: float = Field(default=0.7, ge=0.0, le=1.0)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class PassiveRagIngestRequest(BaseModel):
+    items: list[PassiveRagIngestItem] = Field(min_length=1, max_length=200)
+    min_quality_score: float = Field(default=0.6, ge=0.0, le=1.0)
+    created_by: str | None = None
+
+
+class PassiveRagIngestRejectedItem(BaseModel):
+    source_id: str
+    reason: str
+
+
+class PassiveRagIngestResponse(BaseModel):
+    received: int
+    accepted: int
+    rejected: int
+    created_knowledge_ids: list[str] = Field(default_factory=list)
+    rejected_items: list[PassiveRagIngestRejectedItem] = Field(default_factory=list)
+
+
+class SkillBundleUploadRequest(BaseModel):
+    team_id: str
+    skill_id: str
+    version: str = "v1"
+    bundle: dict[str, Any] = Field(default_factory=dict)
+    tags: list[str] = Field(default_factory=list)
+    uploaded_by: str | None = None
+
+
+class SkillBundleRecord(BaseModel):
+    bundle_id: str
+    team_id: str
+    skill_id: str
+    version: str
+    tags: list[str] = Field(default_factory=list)
+    uploaded_by: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SkillBundleUploadResponse(BaseModel):
+    bundle: SkillBundleRecord
+    detail: str | None = None
+
+
+class TeamSkillSyncRuleRecord(BaseModel):
+    rule_set_id: str
+    team_id: str
+    based_on_bundle_ids: list[str] = Field(default_factory=list)
+    synced_skill_ids: list[str] = Field(default_factory=list)
+    generated_at: datetime
+
+
+class TeamSkillSyncRuleResponse(BaseModel):
+    rule: TeamSkillSyncRuleRecord
+    detail: str | None = None
+
+
+class TeamSkillSyncApplyRequest(BaseModel):
+    dry_run: bool = False
+
+
+class TeamSkillSyncApplyResponse(BaseModel):
+    team_id: str
+    rule_set_id: str
+    dry_run: bool = False
+    synced_skill_ids: list[str] = Field(default_factory=list)
+    detail: str | None = None
+
+
+class GatewayKnowledgeIngestItem(BaseModel):
+    source_type: Literal["session", "cli"] = "session"
+    source_id: str
+    title: str | None = None
+    content: str
+    module: str | None = None
+    team_id: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    quality_score: float = Field(default=0.7, ge=0.0, le=1.0)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class GatewayKnowledgeIngestRequest(BaseModel):
+    items: list[GatewayKnowledgeIngestItem] = Field(min_length=1, max_length=200)
+    min_quality_score: float = Field(default=0.6, ge=0.0, le=1.0)
+    created_by: str | None = None
+
+
+class GatewayKnowledgeIngestResponse(BaseModel):
+    received: int
+    accepted: int
+    rejected: int
+    created_knowledge_ids: list[str] = Field(default_factory=list)
+    rejected_items: list[PassiveRagIngestRejectedItem] = Field(default_factory=list)
+
+
+class RagSummarizeToSkillRequest(BaseModel):
+    scope: str = "team"
+    limit: int = Field(default=20, ge=1, le=200)
+    created_by: str | None = None
+
+
+class RagSummarizeToSkillResponse(BaseModel):
+    scope: str
+    scanned: int
+    generated_updates: int
+    generated_update_ids: list[str] = Field(default_factory=list)
+    detail: str | None = None
+
+
+class AgentWorkflowRecord(BaseModel):
+    workflow_id: str
+    scope: str
+    title: str
+    source_knowledge_ids: list[str] = Field(default_factory=list)
+    source_skill_update_ids: list[str] = Field(default_factory=list)
+    steps: list[str] = Field(default_factory=list)
+    status: Literal["draft", "active", "optimized"] = "draft"
+    optimization_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class GenerateAgentWorkflowRequest(BaseModel):
+    scope: str = "team"
+    constraints: dict[str, Any] = Field(default_factory=dict)
+    created_by: str | None = None
+
+
+class GenerateAgentWorkflowResponse(BaseModel):
+    workflow: AgentWorkflowRecord
+    detail: str | None = None
+
+
+class OptimizeAgentWorkflowRequest(BaseModel):
+    feedback_window: int = Field(default=20, ge=1, le=500)
+
+
+class OptimizeAgentWorkflowResponse(BaseModel):
+    workflow: AgentWorkflowRecord
+    detail: str | None = None
+
+
+class EvolutionOverviewResponse(BaseModel):
+    skill_bundle_total: int
+    team_rule_total: int
+    gateway_knowledge_total: int
+    rag_skill_update_total: int
+    agent_workflow_total: int
+    optimized_workflow_total: int
+
+
+class HookSecretStatusResponse(BaseModel):
+    source: Literal["env", "db", "none"] = "none"
+    masked_secret: str | None = None
+    updated_at: datetime | None = None
+
+
+class HookSecretRotateRequest(BaseModel):
+    new_secret: str | None = None
+
+
+class HookSecretRotateResponse(BaseModel):
+    source: Literal["db"] = "db"
+    new_secret: str
+    masked_secret: str
+    updated_at: datetime
+
+
+class GitRepoPullSyncResponse(BaseModel):
+    repo_id: str
+    branch: str
+    pulled: bool = False
+    commit_sha: str | None = None
+    scanned_files: int = 0
+    imported_skills: int = 0
+    conflicts: int = 0
+    conflict_update_ids: list[str] = Field(default_factory=list)
+    detail: str | None = None
 
 
 # M1.3: Virtual Key Lifecycle - Audit Log and Usage Tracking
