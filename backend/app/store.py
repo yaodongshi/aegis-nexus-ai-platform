@@ -28,6 +28,10 @@ except Exception:  # pragma: no cover - optional runtime dependency
     qdrant_models = None  # type: ignore[assignment]
 
 from .schemas import (
+    ActionChainTemplateCreateRequest,
+    ActionChainTemplateRecord,
+    ActionChainTemplateRunRequest,
+    ActionChainTemplateRunResponse,
     EvolutionOverviewResponse,
     EvolutionActionLogRecord,
     ReplayEvolutionActionChainRequest,
@@ -143,6 +147,7 @@ class PlatformStore:
     team_skill_sync_rules: dict[str, TeamSkillSyncRuleRecord] = field(default_factory=dict)
     agent_workflows: dict[str, AgentWorkflowRecord] = field(default_factory=dict)
     evolution_action_logs: dict[str, EvolutionActionLogRecord] = field(default_factory=dict)
+    action_chain_templates: dict[str, ActionChainTemplateRecord] = field(default_factory=dict)
     # M1.3: Virtual Key Lifecycle - Audit logging and usage tracking
     key_audit_logs: dict[str, list[dict]] = field(default_factory=dict)
     key_usage_stats: dict[str, dict] = field(default_factory=dict)
@@ -164,6 +169,7 @@ class PlatformStore:
     _rule_set_seq: count = field(default_factory=lambda: count(1))
     _workflow_seq: count = field(default_factory=lambda: count(1))
     _evolution_action_seq: count = field(default_factory=lambda: count(1))
+    _action_template_seq: count = field(default_factory=lambda: count(1))
     _schema_ensured: bool = False
     _qdrant_client: Any | None = None
     _qdrant_init_attempted: bool = False
@@ -2204,76 +2210,9 @@ class PlatformStore:
         skipped_action_names: list[str] = []
         for item in reversed(candidates):
             action_name = item.action_name
-            pld = item.payload or {}
-
-            try:
-                if action_name == "upload_skill_bundle" and pld.get("team_id") and pld.get("skill_id"):
-                    self.upload_skill_bundle(
-                        SkillBundleUploadRequest(
-                            team_id=str(pld.get("team_id")),
-                            skill_id=str(pld.get("skill_id")),
-                            version=str(pld.get("version") or "v1"),
-                            bundle={"source": "replay"},
-                            tags=["replay"],
-                            uploaded_by="replay-engine",
-                        )
-                    )
-                elif action_name == "generate_team_skill_sync_rules" and pld.get("team_id"):
-                    self.generate_team_skill_sync_rules(str(pld.get("team_id")))
-                elif action_name == "sync_team_skills" and pld.get("team_id") and pld.get("rule_set_id"):
-                    self.sync_team_skills(
-                        str(pld.get("team_id")),
-                        str(pld.get("rule_set_id")),
-                        TeamSkillSyncApplyRequest(dry_run=True),
-                    )
-                elif action_name == "ingest_gateway_knowledge":
-                    self.ingest_gateway_knowledge(
-                        GatewayKnowledgeIngestRequest(
-                            created_by="replay-engine",
-                            items=[
-                                {
-                                    "source_type": "session",
-                                    "source_id": f"replay-{item.action_id}",
-                                    "title": "Replay effective knowledge",
-                                    "content": "Replay from last success action chain.",
-                                    "team_id": str(pld.get("team_id") or "team_default"),
-                                    "tags": ["replay"],
-                                    "quality_score": 0.8,
-                                    "metadata": {"source_action_id": item.action_id},
-                                }
-                            ],
-                        )
-                    )
-                elif action_name == "summarize_rag_to_skill":
-                    self.summarize_rag_to_skill(
-                        RagSummarizeToSkillRequest(
-                            scope=str(pld.get("scope") or "team"),
-                            limit=10,
-                            created_by="replay-engine",
-                        )
-                    )
-                elif action_name == "generate_agent_workflow":
-                    self.generate_agent_workflow_from_rag(
-                        GenerateAgentWorkflowRequest(
-                            scope=str(pld.get("scope") or "team"),
-                            constraints={},
-                            created_by="replay-engine",
-                        )
-                    )
-                elif action_name == "optimize_agent_workflow" and pld.get("workflow_id"):
-                    optimized = self.optimize_agent_workflow(
-                        str(pld.get("workflow_id")),
-                        OptimizeAgentWorkflowRequest(feedback_window=20),
-                    )
-                    if optimized is None:
-                        skipped_action_names.append(action_name)
-                        continue
-                else:
-                    skipped_action_names.append(action_name)
-                    continue
-
+            if self._execute_replay_action(action_name, item.payload or {}, dry_run=False):
                 replayed_action_names.append(action_name)
-            except Exception:
+            else:
                 skipped_action_names.append(action_name)
 
         self._append_evolution_action_log(
@@ -2294,6 +2233,186 @@ class PlatformStore:
             skipped_action_names=skipped_action_names,
             detail="replay completed",
         )
+
+    def create_action_chain_template(
+        self,
+        payload: ActionChainTemplateCreateRequest,
+    ) -> ActionChainTemplateRecord:
+        now = datetime.now(UTC)
+        action_names = [
+            str(item).strip()
+            for item in payload.action_names
+            if str(item).strip()
+        ]
+        record = ActionChainTemplateRecord(
+            template_id=self._next_id("action_template"),
+            name=payload.name.strip(),
+            action_names=action_names,
+            created_by=(payload.created_by or "system").strip() or "system",
+            created_at=now,
+            updated_at=now,
+        )
+        self.action_chain_templates[record.template_id] = record
+        self._append_evolution_action_log(
+            action_name="create_action_chain_template",
+            actor=record.created_by,
+            detail="action chain template created",
+            payload={
+                "template_id": record.template_id,
+                "name": record.name,
+                "action_count": len(record.action_names),
+            },
+        )
+        return record
+
+    def list_action_chain_templates(self) -> list[ActionChainTemplateRecord]:
+        return sorted(
+            self.action_chain_templates.values(),
+            key=lambda item: item.updated_at,
+            reverse=True,
+        )
+
+    def run_action_chain_template(
+        self,
+        template_id: str,
+        payload: ActionChainTemplateRunRequest,
+    ) -> ActionChainTemplateRunResponse | None:
+        template = self.action_chain_templates.get(template_id)
+        if template is None:
+            return None
+
+        runtime_context = dict(payload.context or {})
+        replayed_action_names: list[str] = []
+        skipped_action_names: list[str] = []
+        for action_name in template.action_names:
+            if self._execute_replay_action(action_name, runtime_context, dry_run=payload.dry_run):
+                replayed_action_names.append(action_name)
+            else:
+                skipped_action_names.append(action_name)
+
+        result = ActionChainTemplateRunResponse(
+            template_id=template.template_id,
+            template_name=template.name,
+            dry_run=payload.dry_run,
+            replayed=len(replayed_action_names),
+            skipped=len(skipped_action_names),
+            replayed_action_names=replayed_action_names,
+            skipped_action_names=skipped_action_names,
+            detail="template run completed",
+        )
+        self._append_evolution_action_log(
+            action_name="run_action_chain_template",
+            actor=runtime_context.get("actor") if isinstance(runtime_context.get("actor"), str) else None,
+            detail=result.detail,
+            payload={
+                "template_id": template.template_id,
+                "template_name": template.name,
+                "dry_run": payload.dry_run,
+                "replayed": result.replayed,
+                "skipped": result.skipped,
+            },
+        )
+        return result
+
+    def _execute_replay_action(self, action_name: str, payload: dict[str, Any], dry_run: bool) -> bool:
+        pld = payload or {}
+        try:
+            if action_name == "upload_skill_bundle":
+                team_id = str(pld.get("team_id") or "team_default")
+                skill_id = str(pld.get("skill_id") or "")
+                if not skill_id:
+                    return False
+                if dry_run:
+                    return True
+                self.upload_skill_bundle(
+                    SkillBundleUploadRequest(
+                        team_id=team_id,
+                        skill_id=skill_id,
+                        version=str(pld.get("version") or "v1"),
+                        bundle={"source": "replay"},
+                        tags=["replay"],
+                        uploaded_by="replay-engine",
+                    )
+                )
+                return True
+
+            if action_name == "generate_team_skill_sync_rules":
+                if dry_run:
+                    return True
+                self.generate_team_skill_sync_rules(str(pld.get("team_id") or "team_default"))
+                return True
+
+            if action_name == "sync_team_skills":
+                team_id = str(pld.get("team_id") or "team_default")
+                rule_set_id = str(pld.get("rule_set_id") or "")
+                if not rule_set_id:
+                    return False
+                if dry_run:
+                    return True
+                self.sync_team_skills(team_id, rule_set_id, TeamSkillSyncApplyRequest(dry_run=True))
+                return True
+
+            if action_name == "ingest_gateway_knowledge":
+                if dry_run:
+                    return True
+                self.ingest_gateway_knowledge(
+                    GatewayKnowledgeIngestRequest(
+                        created_by="replay-engine",
+                        items=[
+                            {
+                                "source_type": "session",
+                                "source_id": f"replay-{uuid4().hex[:8]}",
+                                "title": "Replay effective knowledge",
+                                "content": "Replay from action chain template.",
+                                "team_id": str(pld.get("team_id") or "team_default"),
+                                "tags": ["replay"],
+                                "quality_score": 0.8,
+                                "metadata": {"replay": True},
+                            }
+                        ],
+                    )
+                )
+                return True
+
+            if action_name == "summarize_rag_to_skill":
+                if dry_run:
+                    return True
+                self.summarize_rag_to_skill(
+                    RagSummarizeToSkillRequest(
+                        scope=str(pld.get("scope") or "team"),
+                        limit=10,
+                        created_by="replay-engine",
+                    )
+                )
+                return True
+
+            if action_name == "generate_agent_workflow":
+                if dry_run:
+                    return True
+                self.generate_agent_workflow_from_rag(
+                    GenerateAgentWorkflowRequest(
+                        scope=str(pld.get("scope") or "team"),
+                        constraints={},
+                        created_by="replay-engine",
+                    )
+                )
+                return True
+
+            if action_name == "optimize_agent_workflow":
+                workflow_id = str(pld.get("workflow_id") or "")
+                if not workflow_id:
+                    return False
+                if dry_run:
+                    return True
+                optimized = self.optimize_agent_workflow(
+                    workflow_id,
+                    OptimizeAgentWorkflowRequest(feedback_window=20),
+                )
+                return optimized is not None
+        except Exception:
+            return False
+
+        return False
 
     def _append_evolution_action_log(
         self,
@@ -4437,6 +4556,7 @@ class PlatformStore:
             "ruleset": self._rule_set_seq,
             "workflow": self._workflow_seq,
             "evolution_action": self._evolution_action_seq,
+            "action_template": self._action_template_seq,
         }
         return f"{prefix}_{next(seq_map[prefix])}"
 

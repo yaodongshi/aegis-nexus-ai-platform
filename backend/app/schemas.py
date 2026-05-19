@@ -864,6 +864,37 @@ class ReplayEvolutionActionChainResponse(BaseModel):
     detail: str | None = None
 
 
+class ActionChainTemplateRecord(BaseModel):
+    template_id: str
+    name: str
+    action_names: list[str] = Field(default_factory=list)
+    created_by: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ActionChainTemplateCreateRequest(BaseModel):
+    name: str
+    action_names: list[str] = Field(min_length=1, max_length=30)
+    created_by: str | None = None
+
+
+class ActionChainTemplateRunRequest(BaseModel):
+    dry_run: bool = False
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class ActionChainTemplateRunResponse(BaseModel):
+    template_id: str
+    template_name: str
+    dry_run: bool = False
+    replayed: int
+    skipped: int
+    replayed_action_names: list[str] = Field(default_factory=list)
+    skipped_action_names: list[str] = Field(default_factory=list)
+    detail: str | None = None
+
+
 class HookSecretStatusResponse(BaseModel):
     source: Literal["env", "db", "none"] = "none"
     masked_secret: str | None = None

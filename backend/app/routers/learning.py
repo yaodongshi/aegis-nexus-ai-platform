@@ -11,6 +11,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, R
 from pydantic import ValidationError
 
 from ..schemas import (
+    ActionChainTemplateCreateRequest,
+    ActionChainTemplateRecord,
+    ActionChainTemplateRunRequest,
+    ActionChainTemplateRunResponse,
     AgentWorkflowRecord,
     EvolutionActionLogRecord,
     EvolutionOverviewResponse,
@@ -316,6 +320,55 @@ def list_evolution_actions(
         limit=limit,
         offset=offset,
     )
+
+
+@router.post(
+    "/evolution/action-templates",
+    response_model=ActionChainTemplateRecord,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admin_token)],
+)
+def create_action_chain_template(
+    payload: ActionChainTemplateCreateRequest,
+    store: PlatformStore = Depends(get_store),
+) -> ActionChainTemplateRecord:
+    return store.create_action_chain_template(payload)
+
+
+@router.get(
+    "/evolution/action-templates",
+    response_model=PageResponse[ActionChainTemplateRecord],
+    dependencies=[Depends(require_admin_token)],
+)
+def list_action_chain_templates(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    store: PlatformStore = Depends(get_store),
+) -> PageResponse[ActionChainTemplateRecord]:
+    records = store.list_action_chain_templates()
+    paged = records[offset : offset + limit]
+    return PageResponse[ActionChainTemplateRecord](
+        items=paged,
+        total=len(records),
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post(
+    "/evolution/action-templates/{template_id}/run",
+    response_model=ActionChainTemplateRunResponse,
+    dependencies=[Depends(require_admin_token)],
+)
+def run_action_chain_template(
+    template_id: str,
+    payload: ActionChainTemplateRunRequest,
+    store: PlatformStore = Depends(get_store),
+) -> ActionChainTemplateRunResponse:
+    result = store.run_action_chain_template(template_id, payload)
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action chain template not found")
+    return result
 
 
 @router.post(

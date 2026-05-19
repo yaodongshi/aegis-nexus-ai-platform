@@ -456,4 +456,22 @@ export const learningApi = {
   },
   replayLastSuccessChain: (limit = 5) =>
     govPost<any>('/evolution/actions/replay-last-success-chain', { limit }),
+  actionTemplates: (limit = 50, offset = 0) =>
+    govGet<{ items: any[]; total: number }>(
+      `/evolution/action-templates?limit=${limit}&offset=${offset}`,
+    ),
+  createActionTemplate: (data: { name: string; action_names: string[]; created_by?: string }) =>
+    govPost<any>('/evolution/action-templates', data),
+  runActionTemplate: (
+    templateId: string,
+    data?: { dry_run?: boolean; context?: Record<string, unknown> },
+  ) =>
+    govPost<any>(
+      `/evolution/action-templates/${encodeURIComponent(templateId)}/run`,
+      {
+        dry_run: false,
+        context: {},
+        ...data,
+      },
+    ),
 };

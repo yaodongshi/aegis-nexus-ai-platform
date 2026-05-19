@@ -48,6 +48,9 @@ export default function GovernancePage() {
   const [actionFilterName, setActionFilterName] = useState('');
   const [actionFilterStatus, setActionFilterStatus] = useState('');
   const [actionWindowMinutes, setActionWindowMinutes] = useState('120');
+  const [actionTemplates, setActionTemplates] = useState<any[]>([]);
+  const [templateName, setTemplateName] = useState('');
+  const [templateActions, setTemplateActions] = useState('ingest_gateway_knowledge,summarize_rag_to_skill,generate_agent_workflow');
 
   const [error, setError] = useState('');
 
@@ -56,7 +59,7 @@ export default function GovernancePage() {
   const loadLearning = async () => {
     setLearningLoading(true);
     try {
-      const [reposResp, hooksResp, updatesResp, secretStatus, workflowsResp, overviewResp, actionsResp] = await Promise.all([
+      const [reposResp, hooksResp, updatesResp, secretStatus, workflowsResp, overviewResp, actionsResp, templatesResp] = await Promise.all([
         learningApi.gitRepos(),
         learningApi.hookEvents(),
         learningApi.skillUpdates({ status: 'draft', limit: 30, offset: 0 }),
@@ -70,6 +73,7 @@ export default function GovernancePage() {
           limit: 30,
           offset: 0,
         }),
+        learningApi.actionTemplates(50, 0),
       ]);
       setGitRepos(reposResp.items || []);
       setHookEvents(hooksResp.items || []);
@@ -78,6 +82,7 @@ export default function GovernancePage() {
       setAgentWorkflows(workflowsResp.items || []);
       setEvolutionOverview(overviewResp);
       setEvolutionActions(actionsResp.items || []);
+      setActionTemplates(templatesResp.items || []);
     } catch (e: any) {
       setError(e.message || 'Learning 数据加载失败');
     } finally {
@@ -111,6 +116,57 @@ export default function GovernancePage() {
       await loadLearning();
     } catch (e: any) {
       setError(e.message || '重放成功动作链失败');
+    } finally {
+      setEvolutionLoading(false);
+    }
+  };
+
+  const handleCreateActionTemplate = async () => {
+    if (!templateName.trim()) {
+      setError('请先填写模板名称');
+      return;
+    }
+    const actionNames = templateActions
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean);
+    if (actionNames.length === 0) {
+      setError('请至少填写一个动作名');
+      return;
+    }
+    setEvolutionLoading(true);
+    try {
+      const result = await learningApi.createActionTemplate({
+        name: templateName.trim(),
+        action_names: actionNames,
+        created_by: createdBy,
+      });
+      setEvolutionResult(result);
+      setTemplateName('');
+      await loadLearning();
+    } catch (e: any) {
+      setError(e.message || '创建动作链模板失败');
+    } finally {
+      setEvolutionLoading(false);
+    }
+  };
+
+  const handleRunActionTemplate = async (templateId: string, dryRun: boolean) => {
+    setEvolutionLoading(true);
+    try {
+      const result = await learningApi.runActionTemplate(templateId, {
+        dry_run: dryRun,
+        context: {
+          team_id: teamId,
+          skill_id: skillId,
+          rule_set_id: ruleSetId,
+          actor: createdBy,
+        },
+      });
+      setEvolutionResult(result);
+      await loadLearning();
+    } catch (e: any) {
+      setError(e.message || '运行动作链模板失败');
     } finally {
       setEvolutionLoading(false);
     }
@@ -547,6 +603,44 @@ export default function GovernancePage() {
               </tbody>
             </table>
             {evolutionActions.length === 0 && <div style={{ color: '#aaa', marginTop: 10 }}>暂无进化动作记录</div>}
+          </div>
+
+          <div style={{ ...panelStyle, marginTop: 12 }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>动作链模板</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+              <input style={inputStyle} value={templateName} onChange={e => setTemplateName(e.target.value)} placeholder="模板名称" />
+              <input
+                style={{ ...inputStyle, minWidth: 420 }}
+                value={templateActions}
+                onChange={e => setTemplateActions(e.target.value)}
+                placeholder="动作列表(逗号分隔)"
+              />
+              <button style={btnPrimary} onClick={handleCreateActionTemplate} disabled={evolutionLoading}>保存模板</button>
+            </div>
+            <table style={tableStyle}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #f0f0f0' }}>
+                  {['模板名', '动作数', '创建人', '更新时间', '操作'].map(h => <th key={h} style={thStyle}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {actionTemplates.map((t) => (
+                  <tr key={t.template_id} style={{ borderBottom: '1px solid #f9f9f9' }}>
+                    <td style={tdStyle}>{t.name}</td>
+                    <td style={tdStyle}>{(t.action_names || []).length}</td>
+                    <td style={{ ...tdStyle, fontSize: 12 }}>{t.created_by || '-'}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: '#888' }}>{t.updated_at ? new Date(t.updated_at).toLocaleString() : '-'}</td>
+                    <td style={tdStyle}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button style={btnPrimary} onClick={() => handleRunActionTemplate(t.template_id, true)} disabled={evolutionLoading}>Dry Run</button>
+                        <button style={btnPrimary} onClick={() => handleRunActionTemplate(t.template_id, false)} disabled={evolutionLoading}>执行模板</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {actionTemplates.length === 0 && <div style={{ color: '#aaa', marginTop: 10 }}>暂无动作链模板</div>}
           </div>
 
           <div style={{ ...panelStyle, marginTop: 12 }}>
