@@ -371,6 +371,30 @@ export default function GovernancePage() {
   const failedActionCount = evolutionActions.filter((item) => item.status === 'failed').length;
   const draftSkillCount = conflictUpdates.length;
   const templateCount = actionTemplates.length;
+  const latestAction = evolutionActions[0];
+  const latestActionTime = latestAction?.created_at ? new Date(latestAction.created_at).toLocaleString() : '暂无';
+  const stageLights = [
+    {
+      label: '知识入库',
+      active: evolutionActions.some((item) => item.action_name === 'ingest_gateway_knowledge' && item.status === 'success'),
+    },
+    {
+      label: 'RAG总结',
+      active: evolutionActions.some((item) => item.action_name === 'summarize_rag_to_skill' && item.status === 'success'),
+    },
+    {
+      label: '工作流生成',
+      active: evolutionActions.some((item) => item.action_name === 'generate_agent_workflow' && item.status === 'success'),
+    },
+    {
+      label: '工作流优化',
+      active: evolutionActions.some((item) => item.action_name === 'optimize_agent_workflow' && item.status === 'success'),
+    },
+    {
+      label: '动作链执行',
+      active: evolutionActions.some((item) => item.action_name.includes('action_template') && item.status === 'success'),
+    },
+  ];
 
   return (
     <div>
@@ -502,16 +526,47 @@ export default function GovernancePage() {
 
       {tab === 'learning' && (
         <div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div
+            style={{
+              ...panelStyle,
+              marginBottom: 12,
+              border: '1px solid #d6e4ff',
+              background: 'linear-gradient(140deg, #f0f9ff 0%, #f6ffed 58%, #fff7e6 100%)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>学习闭环运营看板</div>
+                <div style={{ fontSize: 12, color: '#5b6b82' }}>最近动作：{latestAction?.action_name || '暂无'}，更新时间：{latestActionTime}</div>
+              </div>
+              <button style={btnPrimary} onClick={loadLearning} disabled={learningLoading}>
+                {learningLoading ? '刷新中...' : '刷新全量数据'}
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginBottom: 10 }}>
+              {stageLights.map((stage) => (
+                <StageLight key={stage.label} label={stage.label} active={stage.active} />
+              ))}
+            </div>
+            <ActionTimeline actions={evolutionActions} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12, marginBottom: 12 }}>
             <div style={{ ...panelStyle }}>
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>Hook Secret</div>
-              <div style={{ fontSize: 12, color: '#666', marginBottom: 8 }}>
-                当前来源：{hookSecretStatus?.source || 'none'}
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>安全与草案</div>
+              <div style={{ fontSize: 12, color: '#666', marginBottom: 10 }}>
+                Hook 来源：{hookSecretStatus?.source || 'none'}
                 {hookSecretStatus?.masked_secret ? `（${hookSecretStatus.masked_secret}）` : ''}
               </div>
-              <button style={btnPrimary} onClick={handleRotateSecret} disabled={rotatingSecret}>
-                {rotatingSecret ? '轮换中...' : '轮换 Secret'}
-              </button>
+              <div style={{ fontSize: 12, color: '#666', marginBottom: 10 }}>Draft 更新数：{conflictUpdates.length}</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button style={btnPrimary} onClick={handleRotateSecret} disabled={rotatingSecret}>
+                  {rotatingSecret ? '轮换中...' : '轮换 Secret'}
+                </button>
+                <button style={btnSecondary} onClick={loadLearning} disabled={learningLoading}>
+                  刷新草案
+                </button>
+              </div>
               {rotatedSecret && (
                 <div style={{ marginTop: 8, fontSize: 12, color: '#d48806' }}>
                   新 Secret（请保存）：{rotatedSecret}
@@ -520,13 +575,13 @@ export default function GovernancePage() {
             </div>
 
             <div style={{ ...panelStyle }}>
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>冲突草案</div>
-              <div style={{ fontSize: 12, color: '#666', marginBottom: 8 }}>
-                当前 draft 更新数：{conflictUpdates.length}
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>闭环参数上下文</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <input style={inputStyle} value={teamId} onChange={e => setTeamId(e.target.value)} placeholder="Team ID" />
+                <input style={inputStyle} value={skillId} onChange={e => setSkillId(e.target.value)} placeholder="Skill ID" />
+                <input style={inputStyle} value={createdBy} onChange={e => setCreatedBy(e.target.value)} placeholder="Created By" />
+                <input style={inputStyle} value={ruleSetId} onChange={e => setRuleSetId(e.target.value)} placeholder="Rule Set ID" />
               </div>
-              <button style={btnPrimary} onClick={loadLearning} disabled={learningLoading}>
-                {learningLoading ? '刷新中...' : '刷新数据'}
-              </button>
             </div>
           </div>
 
@@ -566,21 +621,36 @@ export default function GovernancePage() {
               <div style={{ background: '#f7faff', borderRadius: 6, padding: 8, fontSize: 12 }}>Agent Workflows: <b>{evolutionOverview?.agent_workflow_total ?? 0}</b></div>
               <div style={{ background: '#f7faff', borderRadius: 6, padding: 8, fontSize: 12 }}>Optimized Workflows: <b>{evolutionOverview?.optimized_workflow_total ?? 0}</b></div>
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-              <input style={inputStyle} value={teamId} onChange={e => setTeamId(e.target.value)} placeholder="Team ID" />
-              <input style={inputStyle} value={skillId} onChange={e => setSkillId(e.target.value)} placeholder="Skill ID" />
-              <input style={inputStyle} value={createdBy} onChange={e => setCreatedBy(e.target.value)} placeholder="Created By" />
-              <input style={inputStyle} value={ruleSetId} onChange={e => setRuleSetId(e.target.value)} placeholder="Rule Set ID" />
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button style={btnPrimary} onClick={handleUploadSkillBundle} disabled={evolutionLoading}>上传 Skill Bundle</button>
-              <button style={btnPrimary} onClick={handleGenerateTeamRules} disabled={evolutionLoading}>生成 Team Rules</button>
-              <button style={btnPrimary} onClick={handleApplyTeamRules} disabled={evolutionLoading}>应用 Team Rules</button>
-              <button style={btnPrimary} onClick={handleIngestGatewayKnowledge} disabled={evolutionLoading}>会话知识入RAG</button>
-              <button style={btnPrimary} onClick={handleSummarizeRagToSkill} disabled={evolutionLoading}>RAG总结到Skill</button>
-              <button style={btnPrimary} onClick={handleGenerateAgentWorkflow} disabled={evolutionLoading}>生成Agent工作流</button>
-              <button style={btnPrimary} onClick={handleOptimizeLatestWorkflow} disabled={evolutionLoading}>优化最新工作流</button>
-              <button style={btnPrimary} onClick={handleReplayLastSuccessChain} disabled={evolutionLoading}>重放最近成功动作链</button>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10 }}>
+              <FlowCard
+                title="阶段一：入库与规则"
+                description="补齐 Skill Bundle 与 Team Rules，再进行知识入库。"
+                actions={[
+                  { label: '上传 Skill Bundle', onClick: handleUploadSkillBundle },
+                  { label: '生成 Team Rules', onClick: handleGenerateTeamRules },
+                  { label: '应用 Team Rules', onClick: handleApplyTeamRules },
+                  { label: '会话知识入RAG', onClick: handleIngestGatewayKnowledge },
+                ]}
+                disabled={evolutionLoading}
+              />
+              <FlowCard
+                title="阶段二：总结与编排"
+                description="把 RAG 知识沉淀为 Skill，再生成和优化 Agent 工作流。"
+                actions={[
+                  { label: 'RAG总结到Skill', onClick: handleSummarizeRagToSkill },
+                  { label: '生成Agent工作流', onClick: handleGenerateAgentWorkflow },
+                  { label: '优化最新工作流', onClick: handleOptimizeLatestWorkflow },
+                ]}
+                disabled={evolutionLoading}
+              />
+              <FlowCard
+                title="阶段三：验证与回放"
+                description="在真实执行前先验证，必要时可重放最近成功动作链。"
+                actions={[
+                  { label: '重放最近成功动作链', onClick: handleReplayLastSuccessChain },
+                ]}
+                disabled={evolutionLoading}
+              />
             </div>
             <div style={{ marginTop: 10, fontSize: 12, color: '#666' }}>
               当前工作流数量：{agentWorkflows.length}
@@ -703,6 +773,7 @@ const tabBtn = (active: boolean): React.CSSProperties => ({
   borderBottom: active ? '2px solid #1677ff' : '2px solid transparent', marginBottom: -2,
 });
 const btnPrimary: React.CSSProperties = { padding: '7px 18px', background: '#1677ff', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 14 };
+const btnSecondary: React.CSSProperties = { padding: '7px 18px', background: '#fff', color: '#445', border: '1px solid #c9d3e3', borderRadius: 4, cursor: 'pointer', fontSize: 14 };
 const inputStyle: React.CSSProperties = { padding: '7px 10px', border: '1px solid #d9d9d9', borderRadius: 4, fontSize: 14 };
 const tableStyle: React.CSSProperties = { width: '100%', background: '#fff', borderRadius: 8, borderCollapse: 'collapse', boxShadow: '0 1px 4px rgba(0,0,0,.08)' };
 const thStyle: React.CSSProperties = { padding: '12px 16px', textAlign: 'left', fontSize: 13, color: '#888', fontWeight: 500 };
@@ -714,6 +785,82 @@ function MetricBox({ label, value, color }: { label: string; value: number; colo
     <div style={{ background: '#fff', borderRadius: 8, padding: '12px 14px', border: '1px solid #eef2f6' }}>
       <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 700, color }}>{value}</div>
+    </div>
+  );
+}
+
+function StageLight({ label, active }: { label: string; active: boolean }) {
+  return (
+    <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e3e9f3', padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span
+        style={{
+          width: 9,
+          height: 9,
+          borderRadius: '50%',
+          background: active ? '#52c41a' : '#bfbfbf',
+          boxShadow: active ? '0 0 0 4px rgba(82, 196, 26, 0.15)' : 'none',
+          display: 'inline-block',
+        }}
+      />
+      <span style={{ fontSize: 12, color: '#4a5b72', fontWeight: 600 }}>{label}</span>
+    </div>
+  );
+}
+
+function ActionTimeline({ actions }: { actions: any[] }) {
+  const recentActions = actions.slice(0, 5);
+  if (recentActions.length === 0) {
+    return <div style={{ fontSize: 12, color: '#8a97ad' }}>暂无动作记录，触发一次闭环动作后将在此展示时间线。</div>;
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      {recentActions.map((action) => (
+        <div
+          key={action.action_id}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '86px 1fr auto',
+            gap: 8,
+            alignItems: 'center',
+            padding: '6px 8px',
+            background: '#ffffffbf',
+            border: '1px solid #e8eef7',
+            borderRadius: 6,
+            fontSize: 12,
+          }}
+        >
+          <span style={{ color: '#60708a' }}>{action.status || '-'}</span>
+          <span style={{ color: '#2f3f56', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{action.action_name || '-'}</span>
+          <span style={{ color: '#7a879b' }}>{action.created_at ? new Date(action.created_at).toLocaleTimeString() : '-'}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FlowCard({
+  title,
+  description,
+  actions,
+  disabled,
+}: {
+  title: string;
+  description: string;
+  actions: Array<{ label: string; onClick: () => void }>;
+  disabled: boolean;
+}) {
+  return (
+    <div style={{ border: '1px solid #e5ebf5', borderRadius: 8, padding: 10, background: '#fcfdff' }}>
+      <div style={{ fontWeight: 700, marginBottom: 4, color: '#2a3a4f' }}>{title}</div>
+      <div style={{ fontSize: 12, color: '#6e7d92', marginBottom: 8 }}>{description}</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {actions.map((action) => (
+          <button key={action.label} style={btnPrimary} onClick={action.onClick} disabled={disabled}>
+            {action.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
