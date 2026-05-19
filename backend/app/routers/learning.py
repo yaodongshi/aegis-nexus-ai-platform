@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
 import json
@@ -26,6 +27,8 @@ from ..schemas import (
     OptimizeAgentWorkflowResponse,
     PassiveRagIngestRequest,
     PassiveRagIngestResponse,
+    ReplayEvolutionActionChainRequest,
+    ReplayEvolutionActionChainResponse,
     HookSecretRotateRequest,
     HookSecretRotateResponse,
     HookSecretStatusResponse,
@@ -291,13 +294,19 @@ def get_evolution_overview(
 def list_evolution_actions(
     action_name: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
+    window_minutes: int | None = Query(default=None, ge=1, le=1440),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     store: PlatformStore = Depends(get_store),
 ) -> PageResponse[EvolutionActionLogRecord]:
+    since = None
+    if window_minutes is not None:
+        since = datetime.now(UTC) - timedelta(minutes=window_minutes)
+
     records = store.list_evolution_action_logs(
         action_name=action_name,
         status=status_filter,
+        since=since,
         limit=limit,
         offset=offset,
     )
@@ -307,6 +316,18 @@ def list_evolution_actions(
         limit=limit,
         offset=offset,
     )
+
+
+@router.post(
+    "/evolution/actions/replay-last-success-chain",
+    response_model=ReplayEvolutionActionChainResponse,
+    dependencies=[Depends(require_admin_token)],
+)
+def replay_last_success_action_chain(
+    payload: ReplayEvolutionActionChainRequest,
+    store: PlatformStore = Depends(get_store),
+) -> ReplayEvolutionActionChainResponse:
+    return store.replay_last_success_action_chain(payload)
 
 
 @router.get(

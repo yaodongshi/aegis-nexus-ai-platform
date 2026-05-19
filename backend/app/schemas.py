@@ -851,6 +851,19 @@ class EvolutionActionLogRecord(BaseModel):
     created_at: datetime
 
 
+class ReplayEvolutionActionChainRequest(BaseModel):
+    limit: int = Field(default=5, ge=1, le=30)
+
+
+class ReplayEvolutionActionChainResponse(BaseModel):
+    requested: int
+    replayed: int
+    skipped: int
+    replayed_action_names: list[str] = Field(default_factory=list)
+    skipped_action_names: list[str] = Field(default_factory=list)
+    detail: str | None = None
+
+
 class HookSecretStatusResponse(BaseModel):
     source: Literal["env", "db", "none"] = "none"
     masked_secret: str | None = None

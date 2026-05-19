@@ -437,8 +437,23 @@ export const learningApi = {
       `/evolution/rag-to-agent/workflows?limit=${limit}&offset=${offset}`,
     ),
   evolutionOverview: () => govGet<any>('/evolution/overview'),
-  evolutionActions: (limit = 50, offset = 0) =>
-    govGet<{ items: any[]; total: number }>(
-      `/evolution/actions?limit=${limit}&offset=${offset}`,
-    ),
+  evolutionActions: (opts?: {
+    action_name?: string;
+    status?: 'success' | 'failed';
+    window_minutes?: number;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const params = new URLSearchParams();
+    if (opts?.action_name) params.set('action_name', opts.action_name);
+    if (opts?.status) params.set('status', opts.status);
+    if (opts?.window_minutes) params.set('window_minutes', String(opts.window_minutes));
+    params.set('limit', String(opts?.limit ?? 50));
+    params.set('offset', String(opts?.offset ?? 0));
+    return govGet<{ items: any[]; total: number }>(
+      `/evolution/actions?${params.toString()}`,
+    );
+  },
+  replayLastSuccessChain: (limit = 5) =>
+    govPost<any>('/evolution/actions/replay-last-success-chain', { limit }),
 };

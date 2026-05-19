@@ -45,6 +45,9 @@ export default function GovernancePage() {
   const [evolutionResult, setEvolutionResult] = useState<any>(null);
   const [evolutionOverview, setEvolutionOverview] = useState<any>(null);
   const [evolutionActions, setEvolutionActions] = useState<any[]>([]);
+  const [actionFilterName, setActionFilterName] = useState('');
+  const [actionFilterStatus, setActionFilterStatus] = useState('');
+  const [actionWindowMinutes, setActionWindowMinutes] = useState('120');
 
   const [error, setError] = useState('');
 
@@ -60,7 +63,13 @@ export default function GovernancePage() {
         learningApi.hookSecretStatus(),
         learningApi.listAgentWorkflows(20, 0),
         learningApi.evolutionOverview(),
-        learningApi.evolutionActions(30, 0),
+        learningApi.evolutionActions({
+          action_name: actionFilterName || undefined,
+          status: (actionFilterStatus as 'success' | 'failed') || undefined,
+          window_minutes: actionWindowMinutes ? Number(actionWindowMinutes) : undefined,
+          limit: 30,
+          offset: 0,
+        }),
       ]);
       setGitRepos(reposResp.items || []);
       setHookEvents(hooksResp.items || []);
@@ -73,6 +82,37 @@ export default function GovernancePage() {
       setError(e.message || 'Learning 数据加载失败');
     } finally {
       setLearningLoading(false);
+    }
+  };
+
+  const handleReloadActions = async () => {
+    setLearningLoading(true);
+    try {
+      const actionsResp = await learningApi.evolutionActions({
+        action_name: actionFilterName || undefined,
+        status: (actionFilterStatus as 'success' | 'failed') || undefined,
+        window_minutes: actionWindowMinutes ? Number(actionWindowMinutes) : undefined,
+        limit: 30,
+        offset: 0,
+      });
+      setEvolutionActions(actionsResp.items || []);
+    } catch (e: any) {
+      setError(e.message || '刷新动作流水线失败');
+    } finally {
+      setLearningLoading(false);
+    }
+  };
+
+  const handleReplayLastSuccessChain = async () => {
+    setEvolutionLoading(true);
+    try {
+      const result = await learningApi.replayLastSuccessChain(5);
+      setEvolutionResult(result);
+      await loadLearning();
+    } catch (e: any) {
+      setError(e.message || '重放成功动作链失败');
+    } finally {
+      setEvolutionLoading(false);
     }
   };
 
@@ -458,6 +498,7 @@ export default function GovernancePage() {
               <button style={btnPrimary} onClick={handleSummarizeRagToSkill} disabled={evolutionLoading}>RAG总结到Skill</button>
               <button style={btnPrimary} onClick={handleGenerateAgentWorkflow} disabled={evolutionLoading}>生成Agent工作流</button>
               <button style={btnPrimary} onClick={handleOptimizeLatestWorkflow} disabled={evolutionLoading}>优化最新工作流</button>
+              <button style={btnPrimary} onClick={handleReplayLastSuccessChain} disabled={evolutionLoading}>重放最近成功动作链</button>
             </div>
             <div style={{ marginTop: 10, fontSize: 12, color: '#666' }}>
               当前工作流数量：{agentWorkflows.length}
@@ -471,6 +512,16 @@ export default function GovernancePage() {
 
           <div style={{ ...panelStyle }}>
             <div style={{ fontWeight: 600, marginBottom: 8 }}>进化动作流水线</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+              <input style={inputStyle} value={actionFilterName} onChange={e => setActionFilterName(e.target.value)} placeholder="动作名筛选" />
+              <select style={inputStyle} value={actionFilterStatus} onChange={e => setActionFilterStatus(e.target.value)}>
+                <option value="">全部状态</option>
+                <option value="success">success</option>
+                <option value="failed">failed</option>
+              </select>
+              <input style={inputStyle} value={actionWindowMinutes} onChange={e => setActionWindowMinutes(e.target.value)} placeholder="时间窗口(分钟)" />
+              <button style={btnPrimary} onClick={handleReloadActions} disabled={learningLoading}>应用筛选</button>
+            </div>
             <table style={tableStyle}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #f0f0f0' }}>

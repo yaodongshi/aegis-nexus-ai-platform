@@ -30,6 +30,8 @@ except Exception:  # pragma: no cover - optional runtime dependency
 from .schemas import (
     EvolutionOverviewResponse,
     EvolutionActionLogRecord,
+    ReplayEvolutionActionChainRequest,
+    ReplayEvolutionActionChainResponse,
     ApprovalRecord,
     ApprovalSubmitRequest,
     AgentWorkflowRecord,
@@ -2168,6 +2170,8 @@ class PlatformStore:
         *,
         action_name: str | None = None,
         status: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[EvolutionActionLogRecord]:
@@ -2180,7 +2184,116 @@ class PlatformStore:
             records = [item for item in records if item.action_name == action_name]
         if status:
             records = [item for item in records if item.status == status]
+        if since is not None:
+            records = [item for item in records if item.created_at >= since]
+        if until is not None:
+            records = [item for item in records if item.created_at <= until]
         return records[offset : offset + limit]
+
+    def replay_last_success_action_chain(
+        self,
+        payload: ReplayEvolutionActionChainRequest,
+    ) -> ReplayEvolutionActionChainResponse:
+        candidates = sorted(
+            [item for item in self.evolution_action_logs.values() if item.status == "success"],
+            key=lambda item: item.created_at,
+            reverse=True,
+        )[: payload.limit]
+
+        replayed_action_names: list[str] = []
+        skipped_action_names: list[str] = []
+        for item in reversed(candidates):
+            action_name = item.action_name
+            pld = item.payload or {}
+
+            try:
+                if action_name == "upload_skill_bundle" and pld.get("team_id") and pld.get("skill_id"):
+                    self.upload_skill_bundle(
+                        SkillBundleUploadRequest(
+                            team_id=str(pld.get("team_id")),
+                            skill_id=str(pld.get("skill_id")),
+                            version=str(pld.get("version") or "v1"),
+                            bundle={"source": "replay"},
+                            tags=["replay"],
+                            uploaded_by="replay-engine",
+                        )
+                    )
+                elif action_name == "generate_team_skill_sync_rules" and pld.get("team_id"):
+                    self.generate_team_skill_sync_rules(str(pld.get("team_id")))
+                elif action_name == "sync_team_skills" and pld.get("team_id") and pld.get("rule_set_id"):
+                    self.sync_team_skills(
+                        str(pld.get("team_id")),
+                        str(pld.get("rule_set_id")),
+                        TeamSkillSyncApplyRequest(dry_run=True),
+                    )
+                elif action_name == "ingest_gateway_knowledge":
+                    self.ingest_gateway_knowledge(
+                        GatewayKnowledgeIngestRequest(
+                            created_by="replay-engine",
+                            items=[
+                                {
+                                    "source_type": "session",
+                                    "source_id": f"replay-{item.action_id}",
+                                    "title": "Replay effective knowledge",
+                                    "content": "Replay from last success action chain.",
+                                    "team_id": str(pld.get("team_id") or "team_default"),
+                                    "tags": ["replay"],
+                                    "quality_score": 0.8,
+                                    "metadata": {"source_action_id": item.action_id},
+                                }
+                            ],
+                        )
+                    )
+                elif action_name == "summarize_rag_to_skill":
+                    self.summarize_rag_to_skill(
+                        RagSummarizeToSkillRequest(
+                            scope=str(pld.get("scope") or "team"),
+                            limit=10,
+                            created_by="replay-engine",
+                        )
+                    )
+                elif action_name == "generate_agent_workflow":
+                    self.generate_agent_workflow_from_rag(
+                        GenerateAgentWorkflowRequest(
+                            scope=str(pld.get("scope") or "team"),
+                            constraints={},
+                            created_by="replay-engine",
+                        )
+                    )
+                elif action_name == "optimize_agent_workflow" and pld.get("workflow_id"):
+                    optimized = self.optimize_agent_workflow(
+                        str(pld.get("workflow_id")),
+                        OptimizeAgentWorkflowRequest(feedback_window=20),
+                    )
+                    if optimized is None:
+                        skipped_action_names.append(action_name)
+                        continue
+                else:
+                    skipped_action_names.append(action_name)
+                    continue
+
+                replayed_action_names.append(action_name)
+            except Exception:
+                skipped_action_names.append(action_name)
+
+        self._append_evolution_action_log(
+            action_name="replay_last_success_action_chain",
+            detail="replay chain finished",
+            payload={
+                "requested": payload.limit,
+                "replayed": len(replayed_action_names),
+                "skipped": len(skipped_action_names),
+            },
+        )
+
+        return ReplayEvolutionActionChainResponse(
+            requested=payload.limit,
+            replayed=len(replayed_action_names),
+            skipped=len(skipped_action_names),
+            replayed_action_names=replayed_action_names,
+            skipped_action_names=skipped_action_names,
+            detail="replay completed",
+        )
 
     def _append_evolution_action_log(
         self,
