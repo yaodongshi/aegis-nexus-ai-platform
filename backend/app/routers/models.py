@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from ..schemas import ModelRegisterRequest, ModelRecord, ModelUpdateRequest, PageResponse
+from ..schemas import (
+    ModelBatchRegisterRequest,
+    ModelBatchRegisterResponse,
+    ModelBatchDeleteRequest,
+    ModelBatchDeleteResponse,
+    ModelRegisterRequest,
+    ModelRecord,
+    ModelUpdateRequest,
+    PageResponse,
+)
 from ..store import PlatformStore
 from .dependencies import get_store
 
@@ -58,6 +67,7 @@ def get_alias(alias: str, store: PlatformStore = Depends(get_store)) -> dict:
 @router.get("", response_model=PageResponse[ModelRecord])
 def list_models(
     provider: str | None = None,
+    provider_id: str | None = None,
     availability: str | None = None,
     alias: str | None = Query(None, description="Optional: filter by model alias instead of model ID"),
     limit: int = Query(default=20, ge=1, le=200),
@@ -94,6 +104,7 @@ def list_models(
     
     records = store.list_models(
         provider=provider,
+        provider_id=provider_id,
         availability=availability,
         limit=None,
         offset=0,
@@ -105,6 +116,22 @@ def list_models(
 @router.post("", response_model=ModelRecord, status_code=status.HTTP_201_CREATED)
 def register_model(payload: ModelRegisterRequest, store: PlatformStore = Depends(get_store)) -> ModelRecord:
     return store.register_model(payload)
+
+
+@router.post("/batch-register", response_model=ModelBatchRegisterResponse)
+def batch_register_models(
+    payload: ModelBatchRegisterRequest,
+    store: PlatformStore = Depends(get_store),
+) -> ModelBatchRegisterResponse:
+    return store.batch_register_models(payload)
+
+
+@router.post("/batch-delete", response_model=ModelBatchDeleteResponse)
+def batch_delete_models(
+    payload: ModelBatchDeleteRequest,
+    store: PlatformStore = Depends(get_store),
+) -> ModelBatchDeleteResponse:
+    return store.batch_delete_models(payload)
 
 
 @router.get("/{model_id}", response_model=ModelRecord)
@@ -121,3 +148,9 @@ def update_model(model_id: str, payload: ModelUpdateRequest, store: PlatformStor
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not found")
     return record
+
+
+@router.delete("/{model_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_model(model_id: str, store: PlatformStore = Depends(get_store)) -> None:
+    if not store.delete_model(model_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not found")

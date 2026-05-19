@@ -14,6 +14,9 @@ from ..schemas import (
     ProviderCreateRequest,
     ProviderProbeLogRecord,
     ProviderModelDiscoveryResponse,
+    ProviderLiveModelDiscoveryRequest,
+    ProviderLiveModelDiscoveryResponse,
+    ProviderGatewaySyncResponse,
     ProviderProbeRequest,
     ProviderProbeResponse,
     ProviderPresetRecord,
@@ -22,13 +25,14 @@ from ..schemas import (
     ProviderUpdateRequest,
 )
 from ..store import PlatformStore
-from .dependencies import get_store, require_admin_token
+from .dependencies import get_store
 
-router = APIRouter(prefix="/api/providers", tags=["providers"], dependencies=[Depends(require_admin_token)])
+public_router = APIRouter(prefix="/api/providers", tags=["providers"])
+
+router = APIRouter(prefix="/api/providers", tags=["providers"])
 
 
-@router.get("/presets", response_model=list[ProviderPresetRecord])
-def list_provider_presets(
+def _filter_provider_presets(
     app: str | None = None,
     provider_type: str | None = None,
     api_format: str | None = None,
@@ -54,6 +58,16 @@ def list_provider_presets(
             or keyword in item.provider_type.lower()
         ]
     return presets
+
+
+@public_router.get("/presets", response_model=list[ProviderPresetRecord])
+def list_provider_presets(
+    app: str | None = None,
+    provider_type: str | None = None,
+    api_format: str | None = None,
+    q: str | None = None,
+) -> list[ProviderPresetRecord]:
+    return _filter_provider_presets(app=app, provider_type=provider_type, api_format=api_format, q=q)
 
 
 @router.get("", response_model=PageResponse[ProviderRecord])
@@ -124,6 +138,24 @@ def discover_provider_models(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to fetch provider models") from exc
+
+
+@router.post("/discover-models-live", response_model=ProviderLiveModelDiscoveryResponse)
+def discover_provider_models_live(
+    payload: ProviderLiveModelDiscoveryRequest,
+    store: PlatformStore = Depends(get_store),
+) -> ProviderLiveModelDiscoveryResponse:
+    try:
+        return store.discover_provider_models_live(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to fetch provider models") from exc
+
+
+@router.post("/sync-gateway", response_model=ProviderGatewaySyncResponse)
+def sync_gateway_runtime(store: PlatformStore = Depends(get_store)) -> ProviderGatewaySyncResponse:
+    return store.sync_litellm_gateway_runtime()
 
 
 @router.post("/{provider_id}/probe", response_model=ProviderProbeResponse)

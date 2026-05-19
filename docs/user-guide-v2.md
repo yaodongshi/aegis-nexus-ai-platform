@@ -1,5 +1,7 @@
 # Team AI Platform 用户手册（V2）
 
+> 对齐声明（2026-05-19）：当前架构基线为 LiteLLM + Qdrant 闭环；产品与架构总设计请先阅读 `AI_DEVHUB_LITELLM_QDRANT_MASTER_PLAN.md`，本文档作为操作手册补充。
+
 > 版本：v2.0 · 适用于 2026-05-14 及以后主线
 
 ---
@@ -43,12 +45,11 @@
    uvicorn team_ai_platform.backend.app.main:app --reload
    ```
 3. **初始化数据库**：
-   ```bash
-   # 依次执行所有 backend/migrations/*.sql
-   psql "$TEAM_AI_PLATFORM_DB_DSN" -f backend/migrations/1001_cp_identity.sql
-   psql "$TEAM_AI_PLATFORM_DB_DSN" -f backend/migrations/1002_cp_virtual_key_and_policy.sql
-   # ... 依次执行所有迁移
-   ```
+  ```bash
+  # 启动后端后会自动创建控制面所需核心表（如 cp_virtual_keys / cp_key_policies）
+  # 如需手动验证，可连接数据库查看表是否存在
+  psql "$TEAM_AI_PLATFORM_DB_DSN" -c "\dt cp_*"
+  ```
 
 ---
 
@@ -148,7 +149,7 @@ codex "写一个冒泡排序"
 - 访问 `/api/v1/keys/{key_id}/audit-log` 查看操作与调用历史
 
 **Q4：如何回滚/升级数据库？**
-- 参考 `backend/migrations/README.md`，按顺序执行 SQL
+- 当前版本不再维护独立 SQL 迁移目录；结构变更通过后端版本升级与启动时建表逻辑统一管理
 
 ---
 

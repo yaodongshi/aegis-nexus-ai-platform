@@ -237,19 +237,10 @@ CREATE INDEX idx_cp_usage_key_bucket ON cp_usage_fact(key_id, ts_bucket DESC);
 - 旧接口继续可用但逐步改为读取 cp_* 视图
 - 通过 feature flag 控制读路径切换
 
-## 6. 数据迁移脚本结构建议
+## 6. 数据迁移脚本结构建议（历史方案，已弃用）
 
 ```text
-team_ai_platform/backend/migrations/
-├── 1001_cp_identity.sql
-├── 1002_cp_virtual_key_and_policy.sql
-├── 1003_cp_skill_registry.sql
-├── 1004_cp_rag_registry.sql
-├── 1005_cp_audit_and_usage.sql
-└── rollback/
-    ├── 1002_cp_virtual_key_and_policy.rollback.sql
-    ├── 1003_cp_skill_registry.rollback.sql
-    └── ...
+该目录结构为早期设计草案，当前实现已改为由后端启动阶段统一建表与演进，不再维护独立 SQL 迁移目录。
 ```
 
 ## 7. 回滚策略

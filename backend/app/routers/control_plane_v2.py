@@ -6,6 +6,7 @@ from ..schemas import (
     PageResponse,
     V2KeyPolicyRecord,
     V2KeyPolicyUpsertRequest,
+    V2OwnershipViewItem,
     V2VirtualKeyCreateRequest,
     V2VirtualKeyCreateResponse,
     V2VirtualKeyRecord,
@@ -44,6 +45,24 @@ def list_virtual_keys(
     )
     paged = records[offset : offset + limit]
     return PageResponse[V2VirtualKeyRecord](items=paged, total=len(records), limit=limit, offset=offset)
+
+
+@router.get("/governance/ownership", response_model=PageResponse[V2OwnershipViewItem])
+def list_ownership_views(
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    team_id: str | None = None,
+    owner_type: str | None = None,
+    owner_id: str | None = None,
+    store: PlatformStore = Depends(get_store),
+) -> PageResponse[V2OwnershipViewItem]:
+    records = store.list_v2_ownership_views(
+        team_id=team_id,
+        owner_type=owner_type,
+        owner_id=owner_id,
+    )
+    paged = records[offset : offset + limit]
+    return PageResponse[V2OwnershipViewItem](items=paged, total=len(records), limit=limit, offset=offset)
 
 
 @router.post("/keys/{key_id}/revoke", response_model=V2VirtualKeyRecord)

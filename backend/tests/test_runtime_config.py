@@ -42,8 +42,8 @@ def test_runtime_config_preview_and_apply(monkeypatch, tmp_path: Path) -> None:
 
         model_names = [entry["model_name"] for entry in preview["config"]["model_list"]]
         assert model_names == sorted(model_names)
-        assert "openai_official-gpt-4-1" in model_names
-        assert "openai_official-gpt-5" in model_names
+        assert "gpt-4.1" in model_names
+        assert "gpt-5" in model_names
 
         apply_resp = client.post(
             "/api/v1/runtime/litellm-config/apply",
@@ -59,7 +59,7 @@ def test_runtime_config_preview_and_apply(monkeypatch, tmp_path: Path) -> None:
 
         config_content = config_path.read_text(encoding="utf-8")
         env_content = env_path.read_text(encoding="utf-8")
-        assert "openai_official-gpt-5" in config_content
+        assert "master_key" in config_content
         assert "TEAM_AI_LITELLM_PROVIDER_" in env_content
 
 

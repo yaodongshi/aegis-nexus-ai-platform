@@ -20,10 +20,23 @@ def require_admin_token(
     if not expected_token:
         return
 
-    bearer_token = None
+    if x_admin_token and secrets.compare_digest(x_admin_token.strip(), expected_token):
+        return
+
     if authorization and authorization.lower().startswith("bearer "):
         bearer_token = authorization.split(" ", 1)[1].strip()
-    provided_token = (x_admin_token or bearer_token or "").strip()
+        # Backward compatibility: allow directly passing admin token as Bearer.
+        if bearer_token and secrets.compare_digest(bearer_token, expected_token):
+            return
 
-    if not provided_token or not secrets.compare_digest(provided_token, expected_token):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin token")
+        # Integrated frontend uses user login token in Authorization header.
+        # Accept a valid signed session token as an alternative to admin token.
+        try:
+            from ..api.v1.users import resolve_user_from_auth_header
+
+            resolve_user_from_auth_header(authorization)
+            return
+        except HTTPException:
+            pass
+
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin token")

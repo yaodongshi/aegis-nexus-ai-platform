@@ -157,6 +157,12 @@
       background: #fff;
     }
 
+    .skill-item-selected {
+      border-color: #79b8b8;
+      background: #eef8f8;
+      box-shadow: 0 0 0 2px rgba(10, 147, 150, 0.15) inset;
+    }
+
     .item-head {
       display: flex;
       justify-content: space-between;
@@ -369,9 +375,87 @@
 
     .status-up { background: #2f6b35; }
     .status-down { background: #bb3e03; }
+
+    /* ---- 登录蒙版 ---- */
+    #login-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: linear-gradient(135deg, #003f4f 0%, #005f73 60%, #0a9396 100%);
+      display: flex; align-items: center; justify-content: center;
+    }
+    #login-overlay.hidden { display: none; }
+    .login-box {
+      background: #fff; border-radius: 20px; padding: 40px 36px;
+      width: min(420px, 92vw); box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .login-box h2 { margin: 0 0 6px; color: var(--brand); font-size: 24px; }
+    .login-box p  { margin: 0 0 24px; color: var(--muted); font-size: 14px; }
+    .login-box input { margin-bottom: 14px; }
+    .login-box button { width: 100%; padding: 12px; font-size: 15px; }
+    #login-error { color: var(--warn); font-size: 13px; margin-top: 8px; min-height: 20px; }
+
+    /* ---- 顶部状态栏 ---- */
+    #top-bar {
+      background: var(--brand); color: #f5fffe;
+      padding: 8px 24px; display: flex; align-items: center;
+      justify-content: space-between; gap: 12px; flex-wrap: wrap;
+      position: sticky; top: 0; z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    #top-bar.hidden { display: none; }
+    #top-bar-title { font-weight: 700; font-size: 15px; }
+    #top-bar-meta  { font-size: 13px; opacity: 0.85; }
+    #logout-btn    { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3);
+                     color: #fff; padding: 4px 14px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+    #logout-btn:hover { background: rgba(255,255,255,0.3); }
+
+    /* ---- CLI 工具接入样式 ---- */
+    .tool-card {
+      background: #fff; border: 1px solid var(--line);
+      border-radius: 14px; padding: 18px 20px; margin-bottom: 14px;
+    }
+    .tool-card h3 { margin: 0 0 6px; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+    .tool-card .tool-meta { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+    .tool-card pre {
+      background: #1e1f1a; color: #e2f0d9; border-radius: 10px;
+      padding: 12px 14px; font-size: 12px; overflow-x: auto;
+      margin: 8px 0; white-space: pre-wrap; word-break: break-all;
+    }
+    .copy-snippet { font-size: 12px; background: var(--brand-2); color: #fff;
+                    border: none; border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+    .tool-status-dot {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: #aaa; vertical-align: middle;
+    }
+    .tool-status-dot.ok  { background: #2f6b35; }
+    .tool-status-dot.err { background: #bb3e03; }
+    .gateway-info-bar {
+      background: linear-gradient(90deg, #e9f5f4, #fde6cf);
+      border-radius: 12px; padding: 14px 18px; margin-bottom: 16px;
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    }
+    .gateway-info-bar code { background: #fff; border-radius: 6px; padding: 2px 8px; font-size: 13px; }
   </style>
 </head>
 <body>
+
+  <!-- 登录蒙版 -->
+  <div id="login-overlay">
+    <div class="login-box">
+      <h2>Team AI Platform</h2>
+      <p>企业级 AI 网关管理后台 · 请使用管理员 Token 登录</p>
+      <label for="login-token-input">管理员 Token</label>
+      <input id="login-token-input" type="password" placeholder="TEAM_AI_PLATFORM_ADMIN_TOKEN" autocomplete="current-password" />
+      <button id="login-btn">登 录</button>
+      <div id="login-error"></div>
+    </div>
+  </div>
+
+  <!-- 顶部状态栏 -->
+  <div id="top-bar" class="hidden">
+    <span id="top-bar-title">⚡ Team AI 管理后台</span>
+    <span id="top-bar-meta">已登录</span>
+    <button id="logout-btn">退出登录</button>
+  </div>
   <div class="wrap">
     <section class="hero">
       <h1>Team AI 管理后台</h1>
@@ -383,11 +467,11 @@
         </div>
         <div class="entry-card">
           <strong>成员入口</strong>
-          <p><a href="http://localhost:9000" target="_blank" rel="noreferrer">9000 Open WebUI</a> 作为团队工作台，成员统一在这里协作与使用共享知识。</p>
+          <p><a id="openWebuiLink" href="http://localhost:9000" target="_blank" rel="noreferrer">9000 Open WebUI</a> 作为团队工作台，成员统一在这里协作与使用共享知识。</p>
         </div>
         <div class="entry-card">
           <strong>CLI / IDE 网关</strong>
-          <p><code>http://localhost:4000/v1</code> 只给 Codex / Claude Code / OpenCode 等客户端通过虚拟 Key 调用。</p>
+          <p>OpenAI 兼容客户端优先使用 <code id="openaiGatewayCode">http://localhost:8000/v1</code>（后端转发）；本机直连 LiteLLM 可用 <code id="litellmGatewayCode">http://localhost:4000/v1</code>。</p>
         </div>
         <div class="entry-card">
           <strong>内部基础设施</strong>
@@ -400,6 +484,8 @@
       <button class="tab-btn active" data-tab="overview">平台总览</button>
       <button class="tab-btn" data-tab="providers">供应商管理</button>
       <button class="tab-btn" data-tab="keys">🔑 Key 管理</button>
+      <button class="tab-btn" data-tab="skills">🧠 团队 Skill</button>
+      <button class="tab-btn" data-tab="cli">🛠 CLI 接入</button>
       <button class="tab-btn" data-tab="learning">闭环学习</button>
     </nav>
 
@@ -427,10 +513,8 @@
           <div class="btns">
             <button id="gotoProvidersBtn">进入供应商治理</button>
             <button id="gotoKeysBtn" class="alt">进入 Key 治理</button>
+            <button id="gotoSkillsBtn" class="alt">进入团队 Skill</button>
             <button id="gotoLearningBtn" class="alt">进入闭环学习</button>
-            <button class="alt" disabled>成员与权限（下一步）</button>
-            <button class="alt" disabled>知识库治理（下一步）</button>
-            <button class="alt" disabled>Skill 生命周期（下一步）</button>
           </div>
         </section>
       </div>
@@ -476,6 +560,16 @@
           <textarea id="notes" rows="3" placeholder="可写套餐/用途/到期时间"></textarea>
         </div>
         <div class="row">
+          <label for="modelCandidates">创建前实时获取模型（可多选）</label>
+          <div class="btns" style="margin-top:0; margin-bottom:8px;">
+            <button id="fetchModelsBtn" type="button" class="alt">获取模型列表</button>
+          </div>
+          <select id="modelCandidates" multiple size="10"></select>
+          <div id="modelCandidatesHint" class="muted" style="margin-top:6px; font-size:12px;">
+            未选择时将使用供应商默认模型策略；选中后仅同步所选模型到 LiteLLM。
+          </div>
+        </div>
+        <div class="row">
           <label for="adminToken">管理员 Token（可选）</label>
           <input id="adminToken" type="password" placeholder="TEAM_AI_PLATFORM_ADMIN_TOKEN" />
         </div>
@@ -484,6 +578,7 @@
           <button id="addBtn">新增供应商</button>
           <button id="cancelEditBtn" class="alt hidden">取消编辑</button>
           <button id="refreshBtn" class="alt">刷新列表</button>
+          <button id="syncGatewayBtn" class="alt">同步网关列表</button>
         </div>
         <div id="toast" class="muted"></div>
       </section>
@@ -585,11 +680,196 @@
         <h2 style="margin:0 0 8px;">💡 LiteLLM 内置管理台</h2>
         <p style="margin:0; color:var(--muted); font-size:14px; line-height:1.6;">
           LiteLLM 提供更完整的 <strong>用户管理、Team 管理、用量统计</strong>：
-          访问 <a href="http://localhost:4000/ui" target="_blank" style="color:var(--brand-2);">http://localhost:4000/ui</a>，
+          访问 <a id="litellmUiLink" href="http://localhost:4000/ui" target="_blank" style="color:var(--brand-2);">http://localhost:4000/ui</a>，
           用户名 <code>admin</code>，密码填写 <code>.env</code> 里的 <code>LITELLM_MASTER_KEY</code>。
         </p>
       </div>
     </div><!-- /tab-keys -->
+
+    <div id="tab-cli" class="hidden">
+      <div style="margin-top:16px;">
+        <div class="gateway-info-bar">
+          <div>
+            <strong>🌐 OpenAI 兼容网关（推荐）</strong>
+            <code id="gatewayUrl">http://localhost:8000/v1</code>
+            <button class="copy-snippet" onclick="navigator.clipboard.writeText(document.getElementById('gatewayUrl').textContent).then(()=>this.textContent='✓')">复制</button>
+          </div>
+          <div>
+            <strong>🔑 当前 Key（CLI 专用）</strong>
+            <code id="cliActiveKey">—</code>
+            <button class="copy-snippet" onclick="copyCliKey()">复制</button>
+          </div>
+          <div>
+            <button id="genCliKeyBtn" class="copy-snippet" style="font-size:13px; padding:6px 14px;">一键生成 CLI Key</button>
+            <button id="refreshCliStatusBtn" class="copy-snippet" style="margin-left:6px; font-size:13px; padding:6px 14px; background:#3f3f3a;">刷新状态</button>
+          </div>
+        </div>
+        <div class="tool-card" style="margin-top:8px;">
+          <h3>🧭 API 地址填写规则（8000 转发）</h3>
+          <div class="tool-meta">如果你的调用链需要走 8000，请按下面填写：</div>
+          <pre id="snippet-routing-rule"># OpenAI 兼容工具（Codex / OpenCode / Gemini / 多数 IDE 扩展）
+OPENAI_BASE_URL=http://localhost:8000/v1
+OPENAI_API_KEY=&lt;YOUR_CLI_KEY&gt;
+
+# Claude Code（Anthropic 协议）
+# 当前仍建议直连 LiteLLM：
+ANTHROPIC_BASE_URL=http://localhost:4000
+ANTHROPIC_API_KEY=&lt;YOUR_CLI_KEY&gt;
+
+# 若是远程部署，把 localhost 替换为你的域名：
+# OPENAI_BASE_URL=https://ai.your-company.com/v1</pre>
+          <button class="copy-snippet" onclick="copySnippet('snippet-routing-rule')">复制规则</button>
+        </div>
+        <div id="cliKeyReveal"></div>
+        <div id="cliToast" class="muted" style="margin-bottom:12px; min-height:18px;"></div>
+
+        <div class="tool-card">
+          <h3><span class="tool-status-dot" id="dot-claude"></span> Claude Code</h3>
+          <div class="tool-meta">Anthropic Claude CLI，支持 opus/sonnet/haiku，完整代码助手</div>
+          <pre id="snippet-claude">ANTHROPIC_BASE_URL=http://localhost:4000
+ANTHROPIC_API_KEY=&lt;YOUR_CLI_KEY&gt;
+# 用法示例
+claude -p "帮我优化这段代码" --model claude-sonnet-4</pre>
+          <button class="copy-snippet" onclick="copySnippet('snippet-claude')">复制配置</button>
+        </div>
+
+        <div class="tool-card">
+          <h3><span class="tool-status-dot" id="dot-codex"></span> OpenAI Codex CLI</h3>
+          <div class="tool-meta">OpenAI 官方 Codex CLI，支持 gpt-4o/gpt-4.1 等所有 OpenAI 模型</div>
+          <pre id="snippet-codex">OPENAI_BASE_URL=http://localhost:8000/v1
+OPENAI_API_KEY=&lt;YOUR_CLI_KEY&gt;
+# 用法示例
+codex "帮我写一个排序算法"</pre>
+          <button class="copy-snippet" onclick="copySnippet('snippet-codex')">复制配置</button>
+        </div>
+
+        <div class="tool-card">
+          <h3><span class="tool-status-dot" id="dot-gemini"></span> Gemini CLI</h3>
+          <div class="tool-meta">Google Gemini CLI（gemini-2.5-pro/flash），OpenAI 兼容模式接入</div>
+          <pre id="snippet-gemini">OPENAI_BASE_URL=http://localhost:8000/v1
+OPENAI_API_KEY=&lt;YOUR_CLI_KEY&gt;
+# 用法示例（通过 OpenAI 兼容模式）
+gemini -p "帮我分析这个日志" -m gemini-2.5-pro</pre>
+          <button class="copy-snippet" onclick="copySnippet('snippet-gemini')">复制配置</button>
+        </div>
+
+        <div class="tool-card">
+          <h3><span class="tool-status-dot" id="dot-opencode"></span> OpenCode</h3>
+          <div class="tool-meta">开源代码助手，支持 openai/anthropic/gemini，完整代码上下文理解</div>
+          <pre id="snippet-opencode">OPENAI_BASE_URL=http://localhost:8000/v1
+OPENAI_API_KEY=&lt;YOUR_CLI_KEY&gt;
+# 用法示例
+opencode run "重构这个函数" -m openai/gpt-4.1</pre>
+          <button class="copy-snippet" onclick="copySnippet('snippet-opencode')">复制配置</button>
+        </div>
+
+        <div class="tool-card">
+          <h3><span class="tool-status-dot" id="dot-cursor"></span> Cursor / VS Code（OpenAI 兼容）与 Copilot 说明</h3>
+          <div class="tool-meta">注意：GitHub Copilot 官方扩展不支持直接注入第三方 key 来拉取自定义模型列表。</div>
+          <pre id="snippet-cursor"># Cursor Settings → Models → OpenAI API Key
+# Base URL: http://localhost:8000/v1
+# API Key: &lt;YOUR_CLI_KEY&gt;
+#
+# VS Code 若使用 OpenAI 兼容插件，可用如下配置：
+{
+  "openai.apiKey": "&lt;YOUR_CLI_KEY&gt;",
+  "openai.baseUrl": "http://localhost:8000/v1"
+}</pre>
+          <button class="copy-snippet" onclick="copySnippet('snippet-cursor')">复制配置</button>
+        </div>
+
+        <div class="tool-card">
+          <h3>📋 .env 一键配置（所有工具）</h3>
+          <div class="tool-meta">将以下内容写入 ~/.env 或 shell profile，所有工具自动使用团队网关</div>
+          <pre id="snippet-all">
+# ===== Team AI Platform CLI 接入配置 =====
+# OpenAI 兼容网关（推荐走 8000 转发）
+export OPENAI_BASE_URL=http://localhost:8000/v1
+export OPENAI_API_KEY=&lt;YOUR_CLI_KEY&gt;
+
+# Claude Code（Anthropic 协议）
+export ANTHROPIC_BASE_URL=http://localhost:4000
+export ANTHROPIC_API_KEY=&lt;YOUR_CLI_KEY&gt;
+# ==========================================</pre>
+          <button class="copy-snippet" onclick="copySnippet('snippet-all')">复制全部</button>
+        </div>
+
+        <section class="card" style="margin-top:8px;">
+          <h2 style="margin:0 0 10px;">CLI Key 列表（仅显示 cli_ 前缀）</h2>
+          <div id="cliKeyList" class="list"></div>
+        </section>
+      </div>
+    </div><!-- /tab-cli -->
+
+    <div id="tab-skills" class="hidden">
+      <div class="grid" style="grid-template-columns: 380px 1fr; margin-top: 16px;">
+        <section class="card">
+          <h2>创建团队 Skill</h2>
+          <p class="muted" style="font-size:13px; margin-top:0;">Skill 是可复用的系统提示词模板，同事可直接调用。</p>
+          <div class="item" style="margin-bottom:12px; background:#f7fbff;">
+            <div class="item-head">
+              <h3 style="font-size:14px; margin:0;">Skill 检索状态</h3>
+              <span id="skillSearchModePill" class="pill">warming</span>
+            </div>
+            <div class="meta" style="margin-top:8px;">
+              <div><strong>Qdrant：</strong><span id="skillQdrantEnabled">-</span> · <span id="skillQdrantCollection">-</span></div>
+              <div><strong>Embedding：</strong><span id="skillEmbeddingModel">-</span> · available=<span id="skillEmbeddingAvailable">-</span></div>
+              <div><strong>最近检索：</strong>mode=<span id="skillLastSearchMode">-</span> · latency=<span id="skillLastSearchLatency">-</span>ms · results=<span id="skillLastSearchCount">-</span></div>
+              <div><strong>下次重试：</strong><span id="skillNextRetryAt">-</span></div>
+              <div><strong>错误：</strong><span id="skillLastError">无</span></div>
+            </div>
+            <div class="actions" style="margin-top:8px;">
+              <button id="refreshSkillStatusBtn" class="alt">刷新状态</button>
+              <button id="probeSkillSearchBtn" class="alt">探测 Embedding</button>
+            </div>
+          </div>
+          <div class="row">
+            <label for="skillName">名称 *</label>
+            <input id="skillName" placeholder="例如 代码审查助手" />
+          </div>
+          <div class="row">
+            <label for="skillDescription">描述</label>
+            <input id="skillDescription" placeholder="简短描述用途" />
+          </div>
+          <div class="row">
+            <label for="skillCategory">分类</label>
+            <select id="skillCategory">
+              <option value="general">通用</option>
+              <option value="code">代码</option>
+              <option value="writing">写作</option>
+              <option value="analysis">分析</option>
+              <option value="qa">问答</option>
+              <option value="translation">翻译</option>
+            </select>
+          </div>
+          <div class="row">
+            <label for="skillTags">标签（逗号分隔）</label>
+            <input id="skillTags" placeholder="例如 review, python, backend" />
+          </div>
+          <div class="row">
+            <label for="skillSystemPrompt">系统提示词 (System Prompt) *</label>
+            <textarea id="skillSystemPrompt" rows="6" placeholder="你是一个专业的代码审查助手，请..." style="font-family: monospace; font-size: 13px;"></textarea>
+          </div>
+          <div class="btns">
+            <button id="createSkillBtn">发布 Skill</button>
+            <button id="refreshSkillsBtn" class="alt">刷新列表</button>
+          </div>
+          <div id="skillsToast" class="muted" style="margin-top:12px; min-height:20px;"></div>
+        </section>
+
+        <section class="card">
+          <div class="toolbar">
+            <h2 style="margin:0;">团队 Skill 库</h2>
+            <span id="skillCount" class="pill">0 skills</span>
+          </div>
+          <input id="skillSearchInput" placeholder="按名称、分类、标签筛选" style="margin-bottom:12px;" />
+          <div id="skillList" class="list"></div>
+          <div id="skillDetail" class="item" style="margin-top:12px; background:#f5fbfa;">
+            <div class="muted">点击「打开详情」查看完整 Prompt 内容。</div>
+          </div>
+        </section>
+      </div>
+    </div><!-- /tab-skills -->
 
     <div id="tab-learning" class="hidden">
       <div class="grid" style="grid-template-columns: 420px 1fr; margin-top: 16px;">
@@ -640,6 +920,35 @@
             <button id="refreshLearningBtn" class="alt">刷新列表</button>
           </div>
           <div id="learningToast" class="muted" style="margin-top:12px; min-height:20px;"></div>
+
+          <h2 style="margin-top:16px;">Git 代码仓绑定</h2>
+          <div class="row">
+            <label for="gitRepoName">仓库名称</label>
+            <input id="gitRepoName" placeholder="例如 team-ai-skills" />
+          </div>
+          <div class="row">
+            <label for="gitRepoPath">仓库路径</label>
+            <input id="gitRepoPath" placeholder="例如 /Users/you/repos/team-ai-skills" />
+          </div>
+          <div class="row">
+            <label for="gitRepoBranch">默认分支</label>
+            <input id="gitRepoBranch" placeholder="main" value="main" />
+          </div>
+          <div class="row" style="display:flex; align-items:center; gap:8px;">
+            <input id="gitRepoAutoCommit" type="checkbox" style="width:auto;" />
+            <label for="gitRepoAutoCommit" style="margin:0;">同步时默认自动提交</label>
+          </div>
+          <div class="btns">
+            <button id="addGitRepoBtn" class="alt">新增并设为当前仓</button>
+            <button id="refreshGitRepoBtn" class="alt">刷新仓库列表</button>
+          </div>
+          <div class="row">
+            <label for="activeGitRepoId">当前绑定仓</label>
+            <select id="activeGitRepoId">
+              <option value="">未绑定</option>
+            </select>
+          </div>
+          <div id="gitRepoList" class="list" style="margin-top:10px;"></div>
         </section>
 
         <section class="card">
@@ -657,6 +966,156 @@
   </div>
 
   <script>
+    // ============================================================
+    // 登录态管理
+    // ============================================================
+    const STORAGE_KEY = "provider_console_admin_token";
+    const loginOverlay = document.getElementById("login-overlay");
+    const topBar       = document.getElementById("top-bar");
+    const topBarMeta   = document.getElementById("top-bar-meta");
+    const loginBtn     = document.getElementById("login-btn");
+    const loginInput   = document.getElementById("login-token-input");
+    const loginError   = document.getElementById("login-error");
+    const logoutBtn    = document.getElementById("logout-btn");
+    const adminTokenInput = document.getElementById("adminToken"); // 供应商表单里的隐藏Token字段
+
+    let _adminToken = "";
+
+    const runtimeEndpoints = (() => {
+      const protocol = window.location.protocol || "http:";
+      const hostname = window.location.hostname || "localhost";
+      const backendOrigin = window.location.origin.replace(/\/$/, "");
+      const openaiGatewayV1 = `${backendOrigin}/v1`;
+      const litellmBase = `${protocol}//${hostname}:4000`;
+      const litellmV1 = `${litellmBase}/v1`;
+      const litellmUi = `${litellmBase}/ui`;
+      const openWebui = `${protocol}//${hostname}:9000`;
+      return { openaiGatewayV1, litellmBase, litellmV1, litellmUi, openWebui };
+    })();
+
+    function applyRuntimeEndpointHints() {
+      const openWebuiLink = document.getElementById("openWebuiLink");
+      if (openWebuiLink) {
+        openWebuiLink.href = runtimeEndpoints.openWebui;
+      }
+
+      const litellmUiLink = document.getElementById("litellmUiLink");
+      if (litellmUiLink) {
+        litellmUiLink.href = runtimeEndpoints.litellmUi;
+        litellmUiLink.textContent = runtimeEndpoints.litellmUi;
+      }
+
+      const gatewayUrl = document.getElementById("gatewayUrl");
+      if (gatewayUrl) {
+        gatewayUrl.textContent = runtimeEndpoints.openaiGatewayV1;
+      }
+
+      const openaiGatewayCode = document.getElementById("openaiGatewayCode");
+      if (openaiGatewayCode) {
+        openaiGatewayCode.textContent = runtimeEndpoints.openaiGatewayV1;
+      }
+
+      const litellmGatewayCode = document.getElementById("litellmGatewayCode");
+      if (litellmGatewayCode) {
+        litellmGatewayCode.textContent = runtimeEndpoints.litellmV1;
+      }
+
+      const snippetIds = [
+        "snippet-routing-rule",
+        "snippet-claude",
+        "snippet-codex",
+        "snippet-gemini",
+        "snippet-opencode",
+        "snippet-cursor",
+        "snippet-all",
+      ];
+      snippetIds.forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        let text = el.textContent;
+        text = text.replace(/http:\/\/localhost:8000\/v1/g, runtimeEndpoints.openaiGatewayV1);
+        text = text.replace(/http:\/\/localhost:4000\/v1/g, runtimeEndpoints.litellmV1);
+        text = text.replace(/http:\/\/localhost:4000/g, runtimeEndpoints.litellmBase);
+        text = text.replace(/http:\/\/localhost:9000/g, runtimeEndpoints.openWebui);
+        el.textContent = text;
+      });
+    }
+
+    applyRuntimeEndpointHints();
+
+    function getAdminToken() { return _adminToken; }
+
+    function withAdminHeaders(headers = {}) {
+      const token = _adminToken;
+      if (!token) return headers;
+      return { ...headers, "X-Admin-Token": token };
+    }
+
+    async function apiFetch(url, options = {}) {
+      const merged = { ...options };
+      merged.headers = withAdminHeaders(options.headers || {});
+      return fetch(url, merged);
+    }
+
+    async function tryLogin(token) {
+      // 用 /api/platform/overview 验证 token 是否有效
+      try {
+        const resp = await fetch("/api/platform/overview", {
+          headers: { "X-Admin-Token": token },
+        });
+        return resp.ok;
+      } catch { return false; }
+    }
+
+    async function doLogin(token) {
+      loginError.textContent = "验证中…";
+      const ok = await tryLogin(token);
+      if (!ok) {
+        loginError.textContent = "Token 无效或服务不可达，请检查后重试。";
+        return;
+      }
+      _adminToken = token;
+      localStorage.setItem(STORAGE_KEY, token);
+      if (adminTokenInput) adminTokenInput.value = token;
+      loginOverlay.classList.add("hidden");
+      topBar.classList.remove("hidden");
+      topBarMeta.textContent = `Token: ${token.slice(0, 6)}…${token.slice(-4)}`;
+      // 自动加载首页数据
+      loadOverview().catch(() => {});
+      loadPresets().catch(() => {});
+    }
+
+    function doLogout() {
+      _adminToken = "";
+      localStorage.removeItem(STORAGE_KEY);
+      loginOverlay.classList.remove("hidden");
+      topBar.classList.add("hidden");
+      loginInput.value = "";
+      loginError.textContent = "";
+    }
+
+    loginBtn.addEventListener("click", () => {
+      const token = loginInput.value.trim();
+      if (!token) { loginError.textContent = "请输入 Token"; return; }
+      doLogin(token);
+    });
+    loginInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") loginBtn.click();
+    });
+    logoutBtn.addEventListener("click", doLogout);
+
+    // 页面加载时自动恢复 Token
+    (async () => {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        loginInput.value = saved;
+        await doLogin(saved);
+      }
+    })();
+
+    // ============================================================
+    // 供应商 / Key 等公共状态
+    // ============================================================
     const presetSelect = document.getElementById("preset");
     const nameInput = document.getElementById("name");
     const providerTypeInput = document.getElementById("providerType");
@@ -665,7 +1124,9 @@
     const scopeInput = document.getElementById("scope");
     const appsInput = document.getElementById("apps");
     const notesInput = document.getElementById("notes");
-    const adminTokenInput = document.getElementById("adminToken");
+    const fetchModelsBtn = document.getElementById("fetchModelsBtn");
+    const modelCandidatesSelect = document.getElementById("modelCandidates");
+    const modelCandidatesHint = document.getElementById("modelCandidatesHint");
     const saveTokenBtn = document.getElementById("saveTokenBtn");
     const toast = document.getElementById("toast");
     const listBox = document.getElementById("list");
@@ -683,25 +1144,7 @@
     let visibleProviders = [];
     let selectedProviderIds = new Set();
     let editingProviderId = null;
-
-    function getAdminToken() {
-      return adminTokenInput.value.trim();
-    }
-
-    function withAdminHeaders(headers = {}) {
-      const token = getAdminToken();
-      if (!token) return headers;
-      return {
-        ...headers,
-        "X-Admin-Token": token,
-      };
-    }
-
-    async function apiFetch(url, options = {}) {
-      const merged = { ...options };
-      merged.headers = withAdminHeaders(options.headers || {});
-      return fetch(url, merged);
-    }
+    let liveDiscoveredModels = [];
 
     function message(text, isError = false) {
       toast.textContent = text;
@@ -756,6 +1199,84 @@
         .split(",")
         .map(v => v.trim())
         .filter(Boolean);
+    }
+
+    function selectedModelIds() {
+      return Array.from(modelCandidatesSelect.selectedOptions).map((opt) => opt.value);
+    }
+
+    function renderLiveModelCandidates(models) {
+      modelCandidatesSelect.innerHTML = "";
+      liveDiscoveredModels = Array.isArray(models) ? models : [];
+      for (const model of liveDiscoveredModels) {
+        const opt = document.createElement("option");
+        opt.value = model;
+        opt.textContent = model;
+        opt.selected = true;
+        modelCandidatesSelect.appendChild(opt);
+      }
+      if (liveDiscoveredModels.length) {
+        modelCandidatesHint.textContent = `已获取 ${liveDiscoveredModels.length} 个模型，默认全选；可手动取消不需要的模型。`;
+      } else {
+        modelCandidatesHint.textContent = "未获取到模型，请检查 provider_type / base_url / API Key 是否正确。";
+      }
+    }
+
+    async function discoverLiveModelsFromForm() {
+      const providerType = providerTypeInput.value.trim();
+      const baseUrl = baseUrlInput.value.trim();
+      const apiKey = apiKeyInput.value.trim();
+
+      // 编辑模式下如果没有输入新 API Key，则复用已保存供应商进行发现。
+      if (editingProviderId && !apiKey) {
+        const resp = await apiFetch(`/api/providers/${editingProviderId}/discover-models`, {
+          method: "POST",
+        });
+        if (!resp.ok) {
+          const detail = await resp.text();
+          throw new Error(`实时获取模型失败: ${detail}`);
+        }
+        const payload = await resp.json();
+        renderLiveModelCandidates(payload.models || []);
+        message(`实时获取完成：${(payload.models || []).length} 个模型`);
+        return;
+      }
+
+      if (!providerType || !baseUrl || !apiKey) {
+        message("请先填写类型、端点、API Key，再获取模型（编辑态可留空复用已保存 Key）", true);
+        return;
+      }
+
+      const resp = await apiFetch("/api/providers/discover-models-live", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider_type: providerType,
+          base_url: baseUrl,
+          api_key: apiKey,
+        }),
+      });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`实时获取模型失败: ${detail}`);
+      }
+      const payload = await resp.json();
+      renderLiveModelCandidates(payload.models || []);
+      message(`实时获取完成：${(payload.models || []).length} 个模型`);
+    }
+
+    async function syncGatewayRuntime() {
+      const resp = await apiFetch("/api/providers/sync-gateway", { method: "POST" });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`同步网关失败: ${detail}`);
+      }
+      const payload = await resp.json();
+      if (payload.ok) {
+        message(`网关列表已同步：${payload.model_count} 个模型`);
+      } else {
+        message(`网关同步未完成：${payload.detail || "未知原因"}`, true);
+      }
     }
 
     function pickPreset(key) {
@@ -847,6 +1368,9 @@
       appsInput.value = "";
       notesInput.value = "";
       scopeInput.value = "app";
+      modelCandidatesSelect.innerHTML = "";
+      liveDiscoveredModels = [];
+      modelCandidatesHint.textContent = "未选择时将使用供应商默认模型策略；选中后仅同步所选模型到 LiteLLM。";
       editingProviderId = null;
       addBtn.textContent = "新增供应商";
       cancelEditBtn.classList.add("hidden");
@@ -931,6 +1455,7 @@
     }
 
     async function addProvider() {
+      const selectedModels = selectedModelIds();
       const body = {
         name: nameInput.value.trim(),
         provider_type: providerTypeInput.value.trim(),
@@ -941,7 +1466,9 @@
         api_format: "openai",
         notes: notesInput.value.trim() || null,
         enabled: true,
-        metadata: {},
+        metadata: selectedModels.length
+          ? { model_ids: selectedModels, model_source: "admin_selected", model_synced_at: new Date().toISOString() }
+          : {},
       };
       const apiKey = apiKeyInput.value.trim();
       if (!body.name || !body.provider_type || !body.base_url) {
@@ -1186,18 +1713,40 @@
     }
 
     presetSelect.addEventListener("change", (e) => pickPreset(e.target.value));
+    fetchModelsBtn.addEventListener("click", async () => {
+      const originalText = fetchModelsBtn.textContent;
+      fetchModelsBtn.disabled = true;
+      fetchModelsBtn.textContent = "获取中...";
+      modelCandidatesHint.textContent = "正在实时获取模型，请稍候...";
+      try {
+        await discoverLiveModelsFromForm();
+      } catch (err) {
+        message(err.message, true);
+      } finally {
+        fetchModelsBtn.disabled = false;
+        fetchModelsBtn.textContent = originalText;
+      }
+    });
     addBtn.addEventListener("click", async () => {
       try { await addProvider(); } catch (err) { message(err.message, true); }
     });
-    saveTokenBtn.addEventListener("click", () => {
-      const token = getAdminToken();
-      if (!token) {
-        localStorage.removeItem("provider_console_admin_token");
-        message("已清除管理员 Token");
-        return;
+    saveTokenBtn.addEventListener("click", async () => {
+      // 供应商表单里的 Token 字段现在只是辅助入口（主入口是登录页）
+      const inputToken = adminTokenInput ? adminTokenInput.value.trim() : "";
+      if (inputToken && inputToken !== _adminToken) {
+        // 用户在表单里输入了不同的 token，帮其切换
+        const ok = await tryLogin(inputToken);
+        if (ok) {
+          _adminToken = inputToken;
+          localStorage.setItem(STORAGE_KEY, inputToken);
+          topBarMeta.textContent = `Token: ${inputToken.slice(0, 6)}…${inputToken.slice(-4)}`;
+          message("Token 已更新并保存");
+        } else {
+          message("Token 验证失败，未保存", true);
+        }
+      } else {
+        message(`当前 Token: ${_adminToken ? _adminToken.slice(0,6)+"…" : "未设置"}（通过顶部登录页管理）`);
       }
-      localStorage.setItem("provider_console_admin_token", token);
-      message("管理员 Token 已保存");
     });
     cancelEditBtn.addEventListener("click", () => {
       resetForm();
@@ -1205,6 +1754,20 @@
     });
     document.getElementById("refreshBtn").addEventListener("click", async () => {
       try { await loadProviders(); message("已刷新"); } catch (err) { message(err.message, true); }
+    });
+    document.getElementById("syncGatewayBtn").addEventListener("click", async () => {
+      const btn = document.getElementById("syncGatewayBtn");
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "同步中...";
+      try {
+        await syncGatewayRuntime();
+      } catch (err) {
+        message(err.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
     });
     document.getElementById("selectVisibleBtn").addEventListener("click", () => {
       visibleProviders.forEach((item) => selectedProviderIds.add(item.id));
@@ -1284,15 +1847,17 @@
         document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         const tab = btn.getAttribute("data-tab");
-        document.getElementById("tab-overview").classList.toggle("hidden", tab !== "overview");
-        document.getElementById("tab-providers").classList.toggle("hidden", tab !== "providers");
-        document.getElementById("tab-keys").classList.toggle("hidden", tab !== "keys");
-        document.getElementById("tab-learning").classList.toggle("hidden", tab !== "learning");
+        ["overview", "providers", "keys", "skills", "cli", "learning"].forEach((t) => {
+          document.getElementById(`tab-${t}`).classList.toggle("hidden", t !== tab);
+        });
         if (tab === "overview") {
           loadOverview().catch((err) => overviewMessage(err.message, true));
         }
         if (tab === "keys") {
           loadKeys().catch((err) => keyMessage(err.message, true));
+        }
+        if (tab === "cli") {
+          loadCliTab().catch((err) => cliMessage(err.message, true));
         }
         if (tab === "learning") {
           loadLearningData().catch((err) => learningMessage(err.message, true));
@@ -1450,8 +2015,151 @@
       document.querySelector('.tab-btn[data-tab="keys"]').click();
     });
 
+    document.getElementById("gotoSkillsBtn").addEventListener("click", () => {
+      document.querySelector('.tab-btn[data-tab="skills"]').click();
+    });
+
     document.getElementById("gotoLearningBtn").addEventListener("click", () => {
       document.querySelector('.tab-btn[data-tab="learning"]').click();
+    });
+
+    // ---- CLI 工具接入 Tab ----
+    let _cliKey = "";
+
+    function cliMessage(text, isError = false) {
+      const el = document.getElementById("cliToast");
+      el.textContent = text;
+      el.style.color = isError ? "#bb3e03" : "#2f6b35";
+    }
+
+    function fillSnippets(key) {
+      _cliKey = key;
+      document.getElementById("cliActiveKey").textContent = key || "—";
+      const placeholder = "&lt;YOUR_CLI_KEY&gt;";
+      const ids = ["snippet-routing-rule", "snippet-claude", "snippet-codex", "snippet-gemini", "snippet-opencode", "snippet-cursor", "snippet-all"];
+      ids.forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = el.textContent.replace(/<YOUR_CLI_KEY>/g, key).replace(placeholder, key);
+      });
+    }
+
+    function copyCliKey() {
+      if (!_cliKey) { cliMessage("尚未生成 CLI Key", true); return; }
+      navigator.clipboard.writeText(_cliKey).then(() => cliMessage("Key 已复制到剪贴板"));
+    }
+
+    function copySnippet(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      navigator.clipboard.writeText(el.textContent).then(() => cliMessage("配置已复制"));
+    }
+
+    async function genCliKey() {
+      const resp = await apiFetch("/api/keys/issue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: "CLI 工具接入 Key",
+          user_id: "cli",
+          project_id: "cli_tools",
+          scope: "project:*",
+          expires_days: 90,
+        }),
+      });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`生成失败: ${detail}`);
+      }
+      const data = await resp.json();
+      const keyValue = data.key_secret || data.key;
+      fillSnippets(keyValue);
+      const reveal = document.getElementById("cliKeyReveal");
+      reveal.innerHTML = `
+        <div class="key-reveal" style="margin-bottom:12px;">
+          <strong>⚠️ 请立即复制！此 Key 仅展示一次</strong>
+          <code>${keyValue}</code>
+          <br/>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText('${keyValue}').then(()=>this.textContent='已复制 ✓')">复制 Key</button>
+        </div>`;
+      cliMessage("CLI Key 已生成，各工具配置已自动填写");
+      await loadCliKeys();
+    }
+
+    async function loadCliKeys() {
+      const resp = await apiFetch("/api/keys?limit=100&user_id=cli");
+      if (!resp.ok) return;
+      const payload = await resp.json();
+      const items = (payload.items || []).filter((k) => k.user_id === "cli" || (k.label || "").includes("CLI"));
+      const el = document.getElementById("cliKeyList");
+      if (!items.length) {
+        el.innerHTML = '<div class="muted" style="padding:12px;">暂无 CLI Key，点击"一键生成 CLI Key"创建</div>';
+        return;
+      }
+      el.innerHTML = "";
+      items.forEach((k) => {
+        const expires = k.expire_at ? new Date(k.expire_at).toLocaleDateString("zh-CN") : "永不过期";
+        const maskedKey = k.key_masked || k.key_prefix || "sk-…";
+        const div = document.createElement("div");
+        div.className = "item";
+        div.innerHTML = `
+          <div class="item-head">
+            <h3 style="font-size:14px;">${k.label || "(CLI Key)"}</h3>
+            <span class="pill">${k.status || "active"} · ${expires}</span>
+          </div>
+          <div class="meta">
+            <div><strong>Key：</strong><code>${maskedKey}</code></div>
+            <div><strong>范围：</strong>${k.scope || "-"}</div>
+            <div><strong>ID：</strong>${k.id}</div>
+          </div>
+          <div class="actions">
+            <button data-key-op="revoke" data-key-id="${k.id}" class="warn">吊销</button>
+          </div>`;
+        el.appendChild(div);
+      });
+    }
+
+    async function checkGatewayStatus() {
+      const tools = ["claude", "codex", "gemini", "opencode", "cursor"];
+      try {
+        const resp = await fetch(`${runtimeEndpoints.litellmBase}/health`);
+        const ok = resp.ok;
+        tools.forEach((t) => {
+          const dot = document.getElementById(`dot-${t}`);
+          if (dot) { dot.className = `tool-status-dot ${ok ? "ok" : "err"}`; }
+        });
+      } catch {
+        tools.forEach((t) => {
+          const dot = document.getElementById(`dot-${t}`);
+          if (dot) dot.className = "tool-status-dot err";
+        });
+      }
+    }
+
+    async function loadCliTab() {
+      await Promise.all([loadCliKeys(), checkGatewayStatus()]);
+      cliMessage("CLI 接入面板已就绪");
+    }
+
+    document.getElementById("genCliKeyBtn").addEventListener("click", async () => {
+      try { await genCliKey(); } catch (err) { cliMessage(err.message, true); }
+    });
+    document.getElementById("refreshCliStatusBtn").addEventListener("click", async () => {
+      try { await loadCliTab(); } catch (err) { cliMessage(err.message, true); }
+    });
+    document.getElementById("cliKeyList").addEventListener("click", async (e) => {
+      const btn = e.target.closest("button[data-key-op]");
+      if (!btn) return;
+      const id = btn.getAttribute("data-key-id");
+      if (btn.getAttribute("data-key-op") === "revoke") {
+        if (!confirm("确认吊销此 CLI Key？")) return;
+        try {
+          const resp = await apiFetch(`/api/keys/${id}`, { method: "DELETE" });
+          if (!resp.ok && resp.status !== 204) throw new Error("吊销失败");
+          cliMessage("Key 已吊销");
+          await loadCliKeys();
+        } catch (err) { cliMessage(err.message, true); }
+      }
     });
 
     // ---- Learning loop ----
@@ -1459,10 +2167,62 @@
     const skillUpdateList = document.getElementById("skillUpdateList");
     const skillUpdateCount = document.getElementById("skillUpdateCount");
     const taskRunList = document.getElementById("taskRunList");
+    const gitRepoList = document.getElementById("gitRepoList");
+    const activeGitRepoSelect = document.getElementById("activeGitRepoId");
+
+    let learningGitRepos = [];
 
     function learningMessage(text, isError = false) {
       learningToast.textContent = text;
       learningToast.style.color = isError ? "#bb3e03" : "#2f6b35";
+    }
+
+    function renderGitRepos(items) {
+      learningGitRepos = items || [];
+      activeGitRepoSelect.innerHTML = '<option value="">未绑定</option>';
+      learningGitRepos.forEach((repo) => {
+        const option = document.createElement("option");
+        option.value = repo.id;
+        option.textContent = `${repo.name} (${repo.branch})`;
+        if (repo.is_active) option.selected = true;
+        activeGitRepoSelect.appendChild(option);
+      });
+
+      gitRepoList.innerHTML = "";
+      if (!learningGitRepos.length) {
+        gitRepoList.innerHTML = '<div class="muted" style="padding:12px;">暂无代码仓绑定配置</div>';
+        return;
+      }
+
+      learningGitRepos.forEach((repo) => {
+        const div = document.createElement("div");
+        div.className = "item";
+        div.innerHTML = `
+          <div class="item-head">
+            <h3 style="font-size:14px;">${repo.name}</h3>
+            <span class="pill">${repo.is_active ? "active" : "standby"}</span>
+          </div>
+          <div class="meta">
+            <div><strong>路径：</strong>${repo.path}</div>
+            <div><strong>分支：</strong>${repo.branch || "main"}</div>
+            <div><strong>自动提交：</strong>${repo.auto_commit ? "是" : "否"}</div>
+            <div><strong>最近同步：</strong>${repo.last_synced_at ? new Date(repo.last_synced_at).toLocaleString("zh-CN") : "-"}</div>
+          </div>
+          <div class="actions">
+            <button data-repo-op="probe" data-repo-id="${repo.id}" class="alt">检测</button>
+            <button data-repo-op="activate" data-repo-id="${repo.id}" class="alt" ${repo.is_active ? "disabled" : ""}>设为当前仓</button>
+            <button data-repo-op="delete" data-repo-id="${repo.id}" class="alt">删除</button>
+          </div>
+        `;
+        gitRepoList.appendChild(div);
+      });
+    }
+
+    async function loadGitRepos() {
+      const resp = await apiFetch("/api/git-repos?limit=100");
+      if (!resp.ok) throw new Error("加载代码仓配置失败");
+      const payload = await resp.json();
+      renderGitRepos(payload.items || []);
     }
 
     function renderTaskRuns(items) {
@@ -1524,17 +2284,86 @@
     }
 
     async function loadLearningData() {
-      const [runsResp, updatesResp] = await Promise.all([
+      const [runsResp, updatesResp, reposResp] = await Promise.all([
         apiFetch("/api/task-runs?limit=50"),
         apiFetch("/api/skill-updates?limit=100"),
+        apiFetch("/api/git-repos?limit=100"),
       ]);
       if (!runsResp.ok) throw new Error("加载任务复盘失败");
       if (!updatesResp.ok) throw new Error("加载技能提案失败");
+      if (!reposResp.ok) throw new Error("加载代码仓配置失败");
       const runsPayload = await runsResp.json();
       const updatesPayload = await updatesResp.json();
+      const reposPayload = await reposResp.json();
       renderTaskRuns(runsPayload.items || []);
       renderSkillUpdates(updatesPayload.items || []);
+      renderGitRepos(reposPayload.items || []);
       learningMessage("闭环学习数据已更新");
+    }
+
+    async function createGitRepo() {
+      const name = document.getElementById("gitRepoName").value.trim();
+      const path = document.getElementById("gitRepoPath").value.trim();
+      const branch = document.getElementById("gitRepoBranch").value.trim() || "main";
+      const autoCommit = document.getElementById("gitRepoAutoCommit").checked;
+      if (!name || !path) {
+        learningMessage("仓库名称与路径必填", true);
+        return;
+      }
+
+      const resp = await apiFetch("/api/git-repos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          path,
+          branch,
+          auto_commit: autoCommit,
+          make_active: true,
+        }),
+      });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`新增代码仓失败: ${detail}`);
+      }
+      learningMessage("代码仓已绑定并设为当前仓");
+      await loadLearningData();
+    }
+
+    async function activateGitRepo(repoId) {
+      const resp = await apiFetch(`/api/git-repos/${repoId}/activate`, { method: "POST" });
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`切换当前仓失败: ${detail}`);
+      }
+      learningMessage("已切换当前代码仓");
+      await loadLearningData();
+    }
+
+    async function deleteGitRepo(repoId) {
+      const ok = confirm("确认删除该代码仓配置吗？");
+      if (!ok) return;
+      const resp = await apiFetch(`/api/git-repos/${repoId}`, { method: "DELETE" });
+      if (!resp.ok && resp.status !== 204) {
+        const detail = await resp.text();
+        throw new Error(`删除代码仓失败: ${detail}`);
+      }
+      learningMessage("代码仓配置已删除");
+      await loadLearningData();
+    }
+
+    async function probeGitRepo(repoId) {
+      const resp = await apiFetch(`/api/git-repos/${repoId}/probe`);
+      if (!resp.ok) {
+        const detail = await resp.text();
+        throw new Error(`检测代码仓失败: ${detail}`);
+      }
+      const data = await resp.json();
+      const status = data.is_git_repo && data.git_available ? "可用" : "不可用";
+      learningMessage(
+        `仓库检测(${status}): path_exists=${data.path_exists}, git_repo=${data.is_git_repo}, branch=${data.active_branch || "-"}, configured_branch_exists=${data.configured_branch_exists}`,
+        !data.is_git_repo || !data.git_available
+      );
     }
 
     async function reportTaskRun() {
@@ -1585,10 +2414,12 @@
         if (path === null) return;
         body.path = path.trim();
       } else {
-        const path = prompt("Git 仓库路径", "");
-        if (path === null) return;
-        const autoCommit = confirm("是否自动执行 git commit?");
-        body = { mode, path: path.trim(), auto_commit: autoCommit };
+        const repoId = activeGitRepoSelect.value;
+        if (!repoId) {
+          learningMessage("请先在“Git 代码仓绑定”里配置并激活仓库", true);
+          return;
+        }
+        body = { mode, repo_id: repoId };
       }
 
       const resp = await apiFetch(`/api/skill-updates/${updateId}/sync`, {
@@ -1612,6 +2443,43 @@
       try { await loadLearningData(); } catch (err) { learningMessage(err.message, true); }
     });
 
+    document.getElementById("addGitRepoBtn").addEventListener("click", async () => {
+      try { await createGitRepo(); } catch (err) { learningMessage(err.message, true); }
+    });
+
+    document.getElementById("refreshGitRepoBtn").addEventListener("click", async () => {
+      try {
+        await loadGitRepos();
+        learningMessage("代码仓列表已刷新");
+      } catch (err) {
+        learningMessage(err.message, true);
+      }
+    });
+
+    activeGitRepoSelect.addEventListener("change", async () => {
+      const repoId = activeGitRepoSelect.value;
+      if (!repoId) return;
+      try {
+        await activateGitRepo(repoId);
+      } catch (err) {
+        learningMessage(err.message, true);
+      }
+    });
+
+    gitRepoList.addEventListener("click", async (e) => {
+      const btn = e.target.closest("button[data-repo-op]");
+      if (!btn || btn.disabled) return;
+      const op = btn.getAttribute("data-repo-op");
+      const repoId = btn.getAttribute("data-repo-id");
+      try {
+        if (op === "probe") await probeGitRepo(repoId);
+        if (op === "activate") await activateGitRepo(repoId);
+        if (op === "delete") await deleteGitRepo(repoId);
+      } catch (err) {
+        learningMessage(err.message, true);
+      }
+    });
+
     skillUpdateList.addEventListener("click", async (e) => {
       const btn = e.target.closest("button[data-learning-op]");
       if (!btn || btn.disabled) return;
@@ -1626,21 +2494,319 @@
       }
     });
 
-    (async function bootstrap() {
-      try {
-        const savedToken = localStorage.getItem("provider_console_admin_token") || "";
-        if (savedToken) {
-          adminTokenInput.value = savedToken;
-        }
-        await loadOverview();
-        await loadPresets();
-        await loadProviders();
-        resetForm();
-        message("Team AI Admin Console ready");
-      } catch (err) {
-        message(err.message, true);
+    // bootstrap 已由顶部的登录态管理 IIFE 接管
+    // 供应商列表在第一次切换到该 Tab 时懒加载
+    document.querySelector('.tab-btn[data-tab="providers"]').addEventListener("click", () => {
+      if (_adminToken && !providers.length) {
+        loadPresets().then(() => loadProviders()).then(() => resetForm()).catch((err) => message(err.message, true));
       }
-    })();
+    }, { once: true });
+
+    // ---- 团队 Skill Tab ----
+    function skillsMessage(text, isError = false) {
+      const el = document.getElementById("skillsToast");
+      el.textContent = text;
+      el.style.color = isError ? "#bb3e03" : "#2f6b35";
+    }
+
+    function _skillStatusText(v, fallback = "-") {
+      if (v === undefined || v === null || v === "") return fallback;
+      return String(v);
+    }
+
+    function renderSkillSearchStatus(status) {
+      if (!status || typeof status !== "object") return;
+      const mode = _skillStatusText(status.mode, "warming");
+      const pill = document.getElementById("skillSearchModePill");
+      pill.textContent = mode;
+      pill.style.background = mode === "vector" ? "#e8f7ec" : (mode === "lexical" ? "#fff4e5" : "#eef3ff");
+      pill.style.color = mode === "vector" ? "#1f7a34" : (mode === "lexical" ? "#9c5d00" : "#2e4ea1");
+
+      document.getElementById("skillQdrantEnabled").textContent = status.qdrant_enabled ? "on" : "off";
+      document.getElementById("skillQdrantCollection").textContent = _skillStatusText(status.qdrant_collection);
+      document.getElementById("skillEmbeddingModel").textContent = _skillStatusText(status.embedding_model);
+      document.getElementById("skillEmbeddingAvailable").textContent = status.embedding_available ? "true" : "false";
+      document.getElementById("skillLastSearchMode").textContent = _skillStatusText(status.last_search_mode);
+      document.getElementById("skillLastSearchLatency").textContent = _skillStatusText(status.last_search_latency_ms, "-");
+      document.getElementById("skillLastSearchCount").textContent = _skillStatusText(status.last_search_result_count, "-");
+
+      const retryAt = status.next_retry_at ? new Date(status.next_retry_at).toLocaleString("zh-CN") : "-";
+      document.getElementById("skillNextRetryAt").textContent = retryAt;
+      document.getElementById("skillLastError").textContent = _skillStatusText(status.last_error, "无");
+    }
+
+    async function loadSkillSearchStatus(probe = false, silent = false) {
+      try {
+        const suffix = probe ? "?probe=true" : "";
+        const resp = await apiFetch(`/api/skills/search-status${suffix}`);
+        if (!resp.ok) throw new Error("加载 Skill 检索状态失败");
+        const payload = await resp.json();
+        renderSkillSearchStatus(payload);
+        if (!silent) {
+          const label = probe ? "已完成 embedding 探测" : "Skill 检索状态已更新";
+          skillsMessage(`${label}（mode=${payload.mode}）`);
+        }
+      } catch (err) {
+        if (!silent) skillsMessage(err.message, true);
+      }
+    }
+
+    let _allSkills = [];
+    let _selectedSkillId = null;
+
+    function getSkillIdFromHash() {
+      const raw = (window.location.hash || "").replace(/^#/, "");
+      if (!raw) return null;
+      const params = new URLSearchParams(raw);
+      const skillId = (params.get("skill") || "").trim();
+      return skillId || null;
+    }
+
+    function setSkillIdToHash(skillId) {
+      const raw = (window.location.hash || "").replace(/^#/, "");
+      const params = new URLSearchParams(raw);
+      if (skillId) {
+        params.set("skill", skillId);
+      } else {
+        params.delete("skill");
+      }
+      const next = params.toString();
+      const nextHash = next ? `#${next}` : "";
+      if (window.location.hash !== nextHash) {
+        window.history.replaceState(null, "", `${window.location.pathname}${nextHash}`);
+      }
+    }
+
+    function _escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function renderSkillDetail(skill) {
+      const detail = document.getElementById("skillDetail");
+      if (!skill) {
+        _selectedSkillId = null;
+        setSkillIdToHash(null);
+        detail.innerHTML = `<div class="muted">点击「打开详情」查看完整 Prompt 内容。</div>`;
+        return;
+      }
+      const tags = (skill.tags || []).map((t) => `<span class="pill" style="margin-right:4px;">${_escapeHtml(t)}</span>`).join("");
+      const created = skill.created_at ? new Date(skill.created_at).toLocaleString("zh-CN") : "-";
+      detail.innerHTML = `
+        <div class="item-head">
+          <h3 style="font-size:15px; margin:0;">${_escapeHtml(skill.name)}</h3>
+          <span class="pill">${_escapeHtml(skill.category || "general")}</span>
+        </div>
+        <div class="meta" style="margin-top:8px;">
+          ${skill.description ? `<div><strong>描述：</strong>${_escapeHtml(skill.description)}</div>` : ""}
+          <div><strong>标签：</strong>${tags || "<span class=\"muted\">无</span>"}</div>
+          <div><strong>ID：</strong>${_escapeHtml(skill.id)}</div>
+          <div><strong>创建时间：</strong>${created}</div>
+          <div style="margin-top:8px;"><strong>完整 System Prompt：</strong></div>
+          <pre style="margin:6px 0 0; background:#fff; border:1px solid var(--line); border-radius:8px; padding:10px; white-space:pre-wrap; word-break:break-word; font-family:monospace; font-size:12px;">${_escapeHtml(skill.system_prompt || "")}</pre>
+        </div>
+      `;
+      detail.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    async function openSkillDetail(skillId) {
+      try {
+        const resp = await apiFetch(`/api/skills/${encodeURIComponent(skillId)}`);
+        if (!resp.ok) throw new Error("加载 Skill 详情失败");
+        const skill = await resp.json();
+        _selectedSkillId = skill.id;
+        setSkillIdToHash(skill.id);
+        renderSkills(_allSkills);
+        renderSkillDetail(skill);
+      } catch (err) {
+        const fallback = _allSkills.find((s) => s.id === skillId);
+        if (fallback) {
+          _selectedSkillId = fallback.id;
+          setSkillIdToHash(fallback.id);
+          renderSkills(_allSkills);
+          renderSkillDetail(fallback);
+          skillsMessage(`详情接口异常，已展示本地缓存：${err.message}`, true);
+        } else {
+          skillsMessage(err.message, true);
+        }
+      }
+    }
+
+    function renderSkills(skills) {
+      const list = document.getElementById("skillList");
+      const countEl = document.getElementById("skillCount");
+      const q = (document.getElementById("skillSearchInput")?.value || "").toLowerCase();
+      const filtered = q
+        ? skills.filter((s) =>
+            (s.name || "").toLowerCase().includes(q) ||
+            (s.description || "").toLowerCase().includes(q) ||
+            (s.category || "").toLowerCase().includes(q) ||
+            (s.tags || []).some((t) => t.toLowerCase().includes(q))
+          )
+        : skills;
+      countEl.textContent = `${filtered.length} skills`;
+      list.innerHTML = "";
+      if (!filtered.length) {
+        list.innerHTML = `<div class="muted" style="padding:12px;">暂无 Skill，点左侧「发布 Skill」创建</div>`;
+        return;
+      }
+      filtered.forEach((s) => {
+        const div = document.createElement("div");
+        div.className = s.id === _selectedSkillId ? "item skill-item-selected" : "item";
+        const created = s.created_at ? new Date(s.created_at).toLocaleDateString("zh-CN") : "-";
+        const tags = (s.tags || []).map((t) => `<span class="pill" style="margin-right:4px;">${t}</span>`).join("");
+        const promptPreview = (s.system_prompt || "").slice(0, 120).replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        div.innerHTML = `
+          <div class="item-head">
+            <h3 style="font-size:14px;">${s.name}</h3>
+            <span class="pill">${s.category || "general"}</span>
+          </div>
+          <div class="meta">
+            ${ s.description ? `<div><strong>描述：</strong>${s.description}</div>` : "" }
+            <div><strong>标签：</strong>${tags || "<span class=\"muted\">无</span>"}</div>
+            <div style="margin-top:6px;"><strong>System Prompt 预览：</strong><br/><code style="font-size:12px; white-space:pre-wrap; word-break:break-all;">${promptPreview}${s.system_prompt && s.system_prompt.length > 120 ? "..." : ""}</code></div>
+            <div><strong>创建时间：</strong>${created}</div>
+            <div><strong>ID：</strong>${s.id}</div>
+          </div>
+          <div class="actions">
+            <button class="alt" data-skill-copy="${s.id}">复制 Prompt</button>
+            <button class="alt" data-skill-open="${s.id}">打开详情</button>
+            <button class="warn" data-skill-delete="${s.id}">删除</button>
+          </div>
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    document.getElementById("skillList").addEventListener("click", async (e) => {
+      const copyBtn = e.target.closest("[data-skill-copy]");
+      if (copyBtn) {
+        const sid = copyBtn.dataset.skillCopy;
+        const skill = _allSkills.find((item) => item.id === sid);
+        const prompt = skill?.system_prompt || "";
+        await navigator.clipboard.writeText(prompt);
+        const oldText = copyBtn.textContent;
+        copyBtn.textContent = "已复制 ✓";
+        setTimeout(() => { copyBtn.textContent = oldText; }, 1500);
+        return;
+      }
+
+      const openBtn = e.target.closest("[data-skill-open]");
+      if (openBtn) {
+        const sid = openBtn.dataset.skillOpen;
+        await openSkillDetail(sid);
+        skillsMessage("已打开详情");
+        return;
+      }
+
+      const deleteBtn = e.target.closest("[data-skill-delete]");
+      if (deleteBtn) {
+        const sid = deleteBtn.dataset.skillDelete;
+        if (!confirm("确认删除此 Skill？")) return;
+        try {
+          const resp = await apiFetch(`/api/skills/${sid}`, { method: "DELETE" });
+          if (!resp.ok && resp.status !== 204) {
+            const d = await resp.text();
+            throw new Error(`删除失败: ${d}`);
+          }
+          skillsMessage("已删除");
+          if (_selectedSkillId === sid) _selectedSkillId = null;
+          renderSkillDetail(null);
+          await loadSkills();
+        } catch (err) {
+          skillsMessage(err.message, true);
+        }
+      }
+    });
+
+    async function loadSkills() {
+      try {
+        await loadSkillSearchStatus(true, true);
+        const resp = await apiFetch("/api/skills?limit=200");
+        if (!resp.ok) throw new Error("加载 Skill 列表失败");
+        const data = await resp.json();
+        _allSkills = data.items || [];
+
+        const hashSkillId = getSkillIdFromHash();
+        if (hashSkillId) {
+          _selectedSkillId = hashSkillId;
+        }
+
+        renderSkills(_allSkills);
+        if (!_allSkills.length) {
+          renderSkillDetail(null);
+          return;
+        }
+
+        if (_selectedSkillId) {
+          const exists = _allSkills.some((item) => item.id === _selectedSkillId);
+          if (exists) {
+            await openSkillDetail(_selectedSkillId);
+          } else {
+            _selectedSkillId = null;
+            renderSkillDetail(null);
+          }
+        }
+      } catch (err) {
+        skillsMessage(err.message, true);
+      }
+    }
+
+    async function createSkill() {
+      const name = document.getElementById("skillName").value.trim();
+      const description = document.getElementById("skillDescription").value.trim();
+      const category = document.getElementById("skillCategory").value;
+      const tagsRaw = document.getElementById("skillTags").value.trim();
+      const system_prompt = document.getElementById("skillSystemPrompt").value.trim();
+      if (!name) { skillsMessage("请填写 Skill 名称", true); return; }
+      if (!system_prompt) { skillsMessage("请填写 System Prompt", true); return; }
+      const tags = tagsRaw ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean) : [];
+      try {
+        const resp = await apiFetch("/api/skills", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, description, category, tags, system_prompt }),
+        });
+        if (!resp.ok) { const d = await resp.text(); throw new Error(`发布失败: ${d}`); }
+        // Reset form
+        document.getElementById("skillName").value = "";
+        document.getElementById("skillDescription").value = "";
+        document.getElementById("skillTags").value = "";
+        document.getElementById("skillSystemPrompt").value = "";
+        document.getElementById("skillCategory").value = "general";
+        skillsMessage("✓ Skill 已发布");
+        await loadSkills();
+      } catch (err) {
+        skillsMessage(err.message, true);
+      }
+    }
+
+    document.getElementById("createSkillBtn").addEventListener("click", createSkill);
+    document.getElementById("refreshSkillsBtn").addEventListener("click", loadSkills);
+    document.getElementById("refreshSkillStatusBtn").addEventListener("click", () => loadSkillSearchStatus(false, false));
+    document.getElementById("probeSkillSearchBtn").addEventListener("click", () => loadSkillSearchStatus(true, false));
+    document.getElementById("skillSearchInput").addEventListener("input", () => renderSkills(_allSkills));
+
+    document.querySelector('.tab-btn[data-tab="skills"]').addEventListener("click", () => {
+      loadSkills().catch((e) => skillsMessage(e.message, true));
+    });
+
+    window.addEventListener("hashchange", () => {
+      const skillId = getSkillIdFromHash();
+      if (!skillId) return;
+      const isSkillsTabVisible = !document.getElementById("tab-skills").classList.contains("hidden");
+      if (isSkillsTabVisible) {
+        openSkillDetail(skillId).catch((e) => skillsMessage(e.message, true));
+      }
+    });
+
+    if (getSkillIdFromHash()) {
+      document.querySelector('.tab-btn[data-tab="skills"]').click();
+    }
   </script>
 </body>
 </html>

@@ -148,6 +148,7 @@ class PlatformStore:
     agent_workflows: dict[str, AgentWorkflowRecord] = field(default_factory=dict)
     evolution_action_logs: dict[str, EvolutionActionLogRecord] = field(default_factory=dict)
     action_chain_templates: dict[str, ActionChainTemplateRecord] = field(default_factory=dict)
+    knowledge_docs: dict[str, Any] = field(default_factory=dict)
     # M1.3: Virtual Key Lifecycle - Audit logging and usage tracking
     key_audit_logs: dict[str, list[dict]] = field(default_factory=dict)
     key_usage_stats: dict[str, dict] = field(default_factory=dict)
@@ -227,7 +228,7 @@ class PlatformStore:
                 endpoint="https://api.openai.com/v1/chat/completions",
                 context_window=128000,
                 cost_tier="high",
-                availability="active",
+                availability="disabled",
                 deployment_status="active",
                 tags=["chat", "code"],
                 labels={"team": "platform", "tier": "prod"},
@@ -3900,6 +3901,7 @@ class PlatformStore:
             created_by=created_by, qdrant_chunk_ids=chunk_ids,
             chunk_count=len(chunk_ids), created_at=now, updated_at=now,
         )
+        self.knowledge_docs[kid] = record
         return record
 
     def get_knowledge(self, knowledge_id: str) -> "KnowledgeRecord | None":
@@ -3916,7 +3918,7 @@ class PlatformStore:
                 )
                 row = cur.fetchone()
             return self._knowledge_from_row(row) if row else None
-        return None
+        return self.knowledge_docs.get(knowledge_id)
 
     def list_knowledge(
         self, *, project_id: str | None = None, q: str | None = None, status: str | None = "active"
@@ -3944,7 +3946,15 @@ class PlatformStore:
                 ql = q.lower()
                 records = [r for r in records if ql in r.title.lower() or ql in r.content.lower()]
             return records
-        return []
+        records = sorted(self.knowledge_docs.values(), key=lambda r: r.created_at, reverse=True)
+        if project_id is not None:
+            records = [r for r in records if r.project_id == project_id]
+        if status is not None:
+            records = [r for r in records if r.status == status]
+        if q:
+            ql = q.lower()
+            records = [r for r in records if ql in r.title.lower() or ql in r.content.lower()]
+        return list(records)
 
     def update_knowledge(self, knowledge_id: str, updates: dict[str, Any]) -> "KnowledgeRecord | None":
         self._ensure_schema_for_request()
@@ -3987,7 +3997,29 @@ class PlatformStore:
                 )
                 row = cur.fetchone()
             return self._knowledge_from_row(row) if row else None
-        return None
+        # In-memory path
+        from .knowledge_schemas import KnowledgeRecord as _KR2  # noqa: PLC0415
+        existing = self.knowledge_docs.get(knowledge_id)
+        if existing is None:
+            return None
+        new_version = existing.version + 1 if ("content" in updates or "title" in updates) else existing.version
+        updated = _KR2(
+            id=existing.id,
+            project_id=existing.project_id,
+            title=updates.get("title", existing.title),
+            content=updates.get("content", existing.content),
+            format=updates.get("format", existing.format),
+            status=updates.get("status", existing.status),
+            tags=updates.get("tags", existing.tags),
+            version=new_version,
+            created_by=existing.created_by,
+            qdrant_chunk_ids=existing.qdrant_chunk_ids,
+            chunk_count=existing.chunk_count,
+            created_at=existing.created_at,
+            updated_at=now,
+        )
+        self.knowledge_docs[knowledge_id] = updated
+        return updated
 
     def delete_knowledge(self, knowledge_id: str) -> bool:
         self._ensure_schema_for_request()
@@ -3997,6 +4029,9 @@ class PlatformStore:
         if self._db_enabled:
             with self._connect() as conn, conn.cursor() as cur:
                 cur.execute("DELETE FROM backend_knowledge WHERE knowledge_id = %s", (knowledge_id,))
+            return True
+        if knowledge_id in self.knowledge_docs:
+            del self.knowledge_docs[knowledge_id]
             return True
         return False
 

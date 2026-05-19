@@ -1,0 +1,222 @@
+name: Spec & Constraint Validation
+
+on:
+  pull_request:
+    paths:
+      - "openspec/**"
+      - "backend/app/**"
+      - "frontend/src/**"
+      - "docs/**"
+  push:
+    branches:
+      - main
+    paths:
+      - "openspec/**"
+      - "backend/app/**"
+      - "frontend/src/**"
+      - "docs/**"
+
+jobs:
+  validate-constraints:
+    name: Validate Architecture Constraints (C1-C5)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Full history for diff analysis
+
+      - name: "C1: Requirement Traceability"
+        run: |
+          echo "=== C1: Checking Requirement Traceability ==="
+
+          # Check if any new /backend code files lack corresponding spec entries
+          if git diff origin/main...HEAD --name-only | grep -q "backend/app"; then
+            echo "⚠️  Backend code changed. Verifying openspec updates..."
+            
+            if ! git diff origin/main...HEAD | grep -q "openspec/specs"; then
+              echo "❌ FAIL: Backend code changed without spec updates"
+              echo "Action: Update openspec/specs/* or openspec/REQUIREMENTS_TRACEABILITY_MATRIX.md"
+              exit 1
+            fi
+          fi
+
+          echo "✓ C1 Check passed"
+
+      - name: "C2: Documentation Sync"
+        run: |
+          echo "=== C2: Checking Documentation Sync ==="
+
+          # If code changed, docs must change too
+          CODE_CHANGED=$(git diff origin/main...HEAD --name-only | grep -E "backend/app|frontend/src" | wc -l)
+          DOCS_CHANGED=$(git diff origin/main...HEAD --name-only | grep -E "docs/|README|\.md" | wc -l)
+
+          if [ "$CODE_CHANGED" -gt 0 ]; then
+            if [ "$DOCS_CHANGED" -eq 0 ]; then
+              echo "⚠️  WARNING: Code changed but no documentation updates found"
+              echo "Consider updating docs/SOLUTION_A_COMPLETE_DESIGN.md or docs/*.md"
+              # This is a warning, not a failure, to allow flexibility
+            fi
+          fi
+
+          echo "✓ C2 Check passed (advisory)"
+
+      - name: "C3: Architecture Validation"
+        run: |
+          echo "=== C3: Checking Architecture Balance ==="
+
+          # Verify all 4 spec files still exist
+          SPECS=("control-plane" "skill-platform" "rag-platform" "gitops-evolution-loop")
+          for spec in "${SPECS[@]}"; do
+            if [ ! -f "openspec/specs/$spec/spec.md" ]; then
+              echo "❌ FAIL: Missing spec file: openspec/specs/$spec/spec.md"
+              exit 1
+            fi
+          done
+
+          # Check that backend still has the 3 expected modules
+          if ! [ -d "backend/app/api/v1" ]; then
+            echo "❌ FAIL: Missing backend control plane API: backend/app/api/v1"
+            exit 1
+          fi
+
+          echo "✓ C3 Check passed"
+
+      - name: "C4: Evolution Visibility"
+        run: |
+          echo "=== C4: Checking Evolution Visibility ==="
+
+          # Verify that skill detail pages have evolution components
+          if grep -r "evolution" frontend/src/pages/skills 2>/dev/null | grep -q "timeline\|proposal"; then
+            echo "✓ Evolution UI components detected"
+          else
+            echo "⚠️  WARNING: Evolution UI components not found in frontend"
+            echo "Ensure frontend/src/pages/skills has evolution timeline + proposal views"
+          fi
+
+          echo "✓ C4 Check passed (advisory)"
+
+      - name: "C5: Terminology Consistency"
+        run: |
+          echo "=== C5: Checking Terminology Consistency ==="
+
+          # Check for confusing mixed terminology
+          if grep -r "知识库.*技能" docs/ frontend/src/ 2>/dev/null | grep -v "SOLUTION_A\|REQUIREMENTS_TRACEABILITY\|FRONTEND_RAG"; then
+            echo "⚠️  WARNING: Found mixed 'RAG & Skill' terminology (should be separate)"
+            echo "Action: Use 'RAG Platform' and 'Skill Platform' separately"
+          fi
+
+          # Check for correct terminology in specs
+          if ! grep -q "Skill Platform" openspec/specs/skill-platform/spec.md; then
+            echo "❌ FAIL: Missing 'Skill Platform' terminology in spec"
+            exit 1
+          fi
+
+          if ! grep -q "RAG Platform" openspec/specs/rag-platform/spec.md; then
+            echo "❌ FAIL: Missing 'RAG Platform' terminology in spec"
+            exit 1
+          fi
+
+          echo "✓ C5 Check passed"
+
+  validate-openspec:
+    name: Validate OpenSpec Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Check spec markdown format
+        run: |
+          echo "=== Validating OpenSpec Markdown Format ==="
+
+          # Check that all spec files have required sections
+          for spec_file in openspec/specs/*/spec.md; do
+            if [ -f "$spec_file" ]; then
+              if ! grep -q "## Capability Overview" "$spec_file"; then
+                echo "❌ FAIL: Missing 'Capability Overview' in $spec_file"
+                exit 1
+              fi
+              
+              if ! grep -q "### Requirement:" "$spec_file"; then
+                echo "❌ FAIL: Missing 'Requirement:' sections in $spec_file"
+                exit 1
+              fi
+              
+              if ! grep -q "#### Scenario:" "$spec_file"; then
+                echo "❌ FAIL: Missing 'Scenario:' sections in $spec_file"
+                exit 1
+              fi
+            fi
+          done
+
+          echo "✓ OpenSpec format validation passed"
+
+  validate-backend-tests:
+    name: Backend Test Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Check test coverage for new code
+        run: |
+          echo "=== Checking Test Coverage for Changes ==="
+
+          # If backend/app code changed, tests should too
+          if git diff origin/main...HEAD --name-only | grep -q "backend/app/app"; then
+            if ! git diff origin/main...HEAD --name-only | grep -q "backend/tests"; then
+              echo "⚠️  WARNING: App code changed without test updates"
+              echo "Consider adding tests in backend/tests/"
+            fi
+          fi
+
+          echo "✓ Test coverage check passed (advisory)"
+
+  validate-requirements-matrix:
+    name: Validate Requirements Matrix Alignment
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Check matrix is updated with changes
+        run: |
+          echo "=== Validating Requirements Traceability Matrix ==="
+
+          # If any spec changed, matrix should be updated
+          if git diff origin/main...HEAD --name-only | grep -q "openspec/specs"; then
+            if ! git diff origin/main...HEAD | grep -q "REQUIREMENTS_TRACEABILITY_MATRIX"; then
+              echo "⚠️  WARNING: Spec changed but traceability matrix not updated"
+              echo "Action: Update openspec/REQUIREMENTS_TRACEABILITY_MATRIX.md to reflect changes"
+            fi
+          fi
+
+          echo "✓ Matrix validation passed (advisory)"
+
+  summary:
+    name: Validation Summary
+    needs:
+      [
+        validate-constraints,
+        validate-openspec,
+        validate-backend-tests,
+        validate-requirements-matrix,
+      ]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Print Summary
+        run: |
+          echo "=========================================="
+          echo "Architecture Constraint Validation Results"
+          echo "=========================================="
+          echo "C1: Requirement Traceability  — ${{ needs.validate-constraints.result }}"
+          echo "C2: Documentation Sync       — ${{ needs.validate-constraints.result }}"
+          echo "C3: Architecture Validation  — ${{ needs.validate-constraints.result }}"
+          echo "C4: Evolution Visibility     — ${{ needs.validate-constraints.result }}"
+          echo "C5: Terminology Consistency  — ${{ needs.validate-constraints.result }}"
+          echo ""
+          echo "Additional Checks:"
+          echo "  - OpenSpec Format          — ${{ needs.validate-openspec.result }}"
+          echo "  - Backend Tests            — ${{ needs.validate-backend-tests.result }}"
+          echo "  - Requirements Matrix      — ${{ needs.validate-requirements-matrix.result }}"
+          echo ""
+          echo "See full logs for details on warnings and recommendations."
+          echo "=========================================="

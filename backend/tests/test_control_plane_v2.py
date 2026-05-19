@@ -147,3 +147,39 @@ def test_policy_not_found_paths(monkeypatch) -> None:
 
         get_response = client.get("/api/v1/policies/keys/key_not_exist")
         assert get_response.status_code == 404
+
+
+def test_list_ownership_views(monkeypatch) -> None:
+    monkeypatch.delenv("TEAM_AI_PLATFORM_ADMIN_TOKEN", raising=False)
+    monkeypatch.delenv("TEAM_AI_PLATFORM_DB_DSN", raising=False)
+
+    with TestClient(app) as client:
+        first = _create_key(client, team_id="team-ops", owner_id="u-ops", owner_type="user", alias="ops-user-1")
+        second = _create_key(client, team_id="team-ops", owner_id="u-ops", owner_type="user", alias="ops-user-2")
+        _create_key(client, team_id="team-ops", owner_id="svc-ops", owner_type="service", alias="ops-svc")
+
+        key_id = second["key"]["key_id"]
+        revoke_response = client.post(f"/api/v1/keys/{key_id}/revoke")
+        assert revoke_response.status_code == 200
+
+        ownership_resp = client.get("/api/v1/governance/ownership")
+        assert ownership_resp.status_code == 200, ownership_resp.text
+        payload = ownership_resp.json()
+        assert payload["total"] == 2
+
+        user_owner = [
+            item for item in payload["items"]
+            if item["team_id"] == "team-ops" and item["owner_type"] == "user" and item["owner_id"] == "u-ops"
+        ][0]
+        assert user_owner["total_keys"] == 2
+        assert user_owner["active_keys"] == 1
+        assert user_owner["revoked_keys"] == 1
+
+        filtered_resp = client.get(
+            "/api/v1/governance/ownership",
+            params={"team_id": "team-ops", "owner_type": "service"},
+        )
+        assert filtered_resp.status_code == 200
+        filtered_payload = filtered_resp.json()
+        assert filtered_payload["total"] == 1
+        assert filtered_payload["items"][0]["owner_id"] == "svc-ops"

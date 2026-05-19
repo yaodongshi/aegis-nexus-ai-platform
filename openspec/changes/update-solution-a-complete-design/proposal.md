@@ -16,4 +16,4 @@ The platform direction is now explicit: LiteLLM as the data plane, one observabi
 ## Impact
 - Affected specs: `gateway-data-plane`, `control-plane-governance`, `observability-plane`, `skill-rag-registry`
 - Affected docs: `docs/user-guide-v2.md`, `docs/SOLUTION_A_COMPLETE_DESIGN.md`
-- Affected code (future implementation): `backend/app/*`, `backend/migrations/*`, `scripts/*`
+- Affected code (future implementation): `backend/app/*`, `scripts/*`

@@ -1,0 +1,114 @@
+version: '3.8'
+
+# Phase 0 Development Environment (Milestone 0A: RAG Foundation)
+# Usage: docker-compose -f docker-compose.phase0.yml up -d
+
+services:
+  # PostgreSQL 数据库 (主存储)
+  postgres:
+    image: postgres:15-alpine
+    container_name: team_ai_postgres_phase0
+    environment:
+      POSTGRES_DB: team_ai_platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_INITDB_ARGS: "-c shared_preload_libraries=vector"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_phase0:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - team_ai_phase0
+    command: postgres -c max_connections=200
+
+  # Qdrant 向量数据库 (RAG核心)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: team_ai_qdrant_phase0
+    ports:
+      - "6333:6333"  # HTTP API
+      - "6334:6334"  # gRPC API
+    volumes:
+      - qdrant_data_phase0:/qdrant/storage
+    environment:
+      - QDRANT_API_KEY=qdrant-dev-key-123
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - team_ai_phase0
+
+  # Redis (消息队列和缓存)
+  redis:
+    image: redis:7-alpine
+    container_name: team_ai_redis_phase0
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_phase0:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - team_ai_phase0
+    command: redis-server --appendonly yes
+
+  # FastAPI 应用 (Phase 0后端)
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: team_ai_api_phase0:latest
+    container_name: team_ai_api_phase0
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/team_ai_platform
+      QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://redis:6379/0
+      TEAM_AI_PLATFORM_ADMIN_TOKEN: admin-token-dev-phase0
+      TEAM_AI_PLATFORM_PROJECT_NAME: Team AI Platform - Phase 0
+      PYTHONUNBUFFERED: 1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/__pycache__
+    command: >
+      sh -c "
+        python -m app.core.db_init &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+    networks:
+      - team_ai_phase0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data_phase0:
+    driver: local
+  qdrant_data_phase0:
+    driver: local
+  redis_data_phase0:
+    driver: local
+
+networks:
+  team_ai_phase0:
+    driver: bridge

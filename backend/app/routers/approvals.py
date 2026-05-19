@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 
 from ..schemas import ApprovalRecord, ApprovalSubmitRequest, PageResponse
 from ..store import PlatformStore
@@ -30,4 +30,36 @@ def get_approval(approval_id: str, store: PlatformStore = Depends(get_store)) ->
     record = store.get_approval(approval_id)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Approval not found")
+    return record
+
+
+@router.post("/{approval_id}/approve", response_model=ApprovalRecord)
+def approve_approval(
+    approval_id: str,
+    reason: str | None = Body(default=None, embed=True),
+    approver_id: str = Body(default="admin", embed=True),
+    store: PlatformStore = Depends(get_store),
+) -> ApprovalRecord:
+    record = store.approve_approval(approval_id, approver_id=approver_id, reason=reason)
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Approval not found or already processed",
+        )
+    return record
+
+
+@router.post("/{approval_id}/reject", response_model=ApprovalRecord)
+def reject_approval(
+    approval_id: str,
+    reason: str | None = Body(default=None, embed=True),
+    approver_id: str = Body(default="admin", embed=True),
+    store: PlatformStore = Depends(get_store),
+) -> ApprovalRecord:
+    record = store.reject_approval(approval_id, approver_id=approver_id, reason=reason)
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Approval not found or already processed",
+        )
     return record
