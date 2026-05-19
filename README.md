@@ -139,6 +139,72 @@ bash -n scripts/apply_litellm_gateway.sh scripts/e2e_runtime_pipeline.sh
 pytest -q backend/tests/test_runtime_config.py backend/tests/test_control_plane_v2.py
 ```
 
+## Real Business E2E (CLI → Git → RAG → Skill → Agent → MCP)
+
+`scripts/e2e_full_business_pipeline.sh` exercises the **entire business chain**
+against a running stack: it clones a real Gitea repo, performs a CLI commit,
+registers the repo with the control plane, sends an HMAC-signed `post-commit`
+hook, ingests RAG knowledge, reports a task-run, applies a skill update,
+performs semantic skill search, generates a RAG→Agent workflow, uploads an
+MCP skill bundle, generates team rules and exports skill packs for both
+`claude-code` and `opencode` targets.
+
+### What the pipeline covers (27 assertions)
+
+| Stage | What it validates |
+| ----- | ----------------- |
+| 0  | `/api/platform/runtime-health` reports `ok=true` with N models |
+| 1  | CLI `git clone` + commit + push to remote `testskill.git` |
+| 2  | Control-plane registers repo, `git-probe` + `git-pull` succeed **inside the backend container** |
+| 3  | Rotate hook secret + report an HMAC `sha256=…` signed `post-commit` event |
+| 4  | RAG ingest via `/api/evolution/gateway-knowledge/ingest` (Qdrant) |
+| 5  | `task-runs/report` → `skill-updates/{id}/apply` materializes a real skill |
+| 6  | Skill direct CRUD + vector-mode `/api/skills/search?query=` |
+| 7  | `evolution/rag-to-skill/summarize` aggregation |
+| 8  | `evolution/rag-to-agent/generate` produces an agent workflow record |
+| 9  | MCP `skill-bundles/upload`, `team-rules/generate`, `apply` (dry-run), `download` |
+| 10 | `/api/skills/{id}/pack/{claude-code,opencode}` artifact export |
+| 11 | `evolution/overview` + `actions` ledger reflect new activity |
+
+### Required environment
+
+```bash
+export API_BASE="http://localhost:3000"               # nginx front of backend
+export ADMIN_TOKEN="sk-admin-local-change-me"         # X-Admin-Token
+export GIT_REMOTE_URL="http://gitea.zodioo.com/diaojiaolou/testskill.git"
+export GIT_USER="diaojiaolou"
+export GIT_PASSWORD="********"                        # Gitea PAT or password
+```
+
+### Run
+
+```bash
+cd team_ai_platform
+bash scripts/e2e_full_business_pipeline.sh
+```
+
+Expected tail:
+
+```
+Passed:  27
+Failed:  0
+All e2e business pipeline stages passed.
+```
+
+### Implementation notes
+
+- The script clones the Gitea repo into `backend/.aegis_e2e_repo/testskill`
+  on the host so the backend container (which only bind-mounts `./backend`)
+  can see the working tree at `/app/backend/.aegis_e2e_repo/testskill`. The
+  control-plane is registered with **the container path**.
+- The script is **idempotent**: it reuses a previously registered repo
+  record by matching `path`, and skips git commits when the manifest is
+  already up to date.
+- Hook signing uses `hmac.sha256(secret, raw_body)` with header
+  `X-Hook-Signature: sha256=…`; the secret is rotated to a known value
+  via `POST /api/skill-sync/hooks/secret/rotate` immediately before
+  the signed report so the test never depends on a pre-existing secret.
+
 ## Main Entrypoints
 
 - Admin Console: http://localhost:8000/admin
