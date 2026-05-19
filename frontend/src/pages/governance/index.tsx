@@ -14,6 +14,8 @@ const STATUS_STYLE: Record<string, React.CSSProperties> = {
 
 export default function GovernancePage() {
   const [tab, setTab] = useState<GovTab>('learning');
+  const [evolutionAvailable, setEvolutionAvailable] = useState(true);
+  const [evolutionHint, setEvolutionHint] = useState('');
 
   // ── Policies ──
   const [policies, setPolicies] = useState<any[]>([]);
@@ -54,16 +56,22 @@ export default function GovernancePage() {
 
   const [error, setError] = useState('');
 
+  const isNotFoundError = (message: string) =>
+    message.includes('Not Found') || message.includes('404');
+
   const loadPolicies  = () => policiesApi.list().then(r => setPolicies(r.items)).catch(e => setError(e.message));
   const loadApprovals = () => approvalsApi.list().then(r => setApprovals(r.items)).catch(e => setError(e.message));
   const loadLearning = async () => {
     setLearningLoading(true);
     try {
-      const [reposResp, hooksResp, updatesResp, secretStatus, workflowsResp, overviewResp, actionsResp, templatesResp] = await Promise.all([
+      const [reposResp, hooksResp, updatesResp, secretStatus] = await Promise.all([
         learningApi.gitRepos(),
         learningApi.hookEvents(),
         learningApi.skillUpdates({ status: 'draft', limit: 30, offset: 0 }),
         learningApi.hookSecretStatus(),
+      ]);
+
+      const evolutionResults = await Promise.allSettled([
         learningApi.listAgentWorkflows(20, 0),
         learningApi.evolutionOverview(),
         learningApi.evolutionActions({
@@ -75,14 +83,32 @@ export default function GovernancePage() {
         }),
         learningApi.actionTemplates(50, 0),
       ]);
+
+      const hasNotFound = evolutionResults.some(
+        (result) => result.status === 'rejected' && isNotFoundError(String(result.reason?.message || '')),
+      );
+
       setGitRepos(reposResp.items || []);
       setHookEvents(hooksResp.items || []);
       setConflictUpdates(updatesResp.items || []);
       setHookSecretStatus(secretStatus);
-      setAgentWorkflows(workflowsResp.items || []);
-      setEvolutionOverview(overviewResp);
-      setEvolutionActions(actionsResp.items || []);
-      setActionTemplates(templatesResp.items || []);
+
+      if (hasNotFound) {
+        setEvolutionAvailable(false);
+        setEvolutionHint('当前后端未启用 evolution 路由，已自动降级为基础治理模式。请重建 backend 镜像后恢复完整闭环能力。');
+        setAgentWorkflows([]);
+        setEvolutionOverview(null);
+        setEvolutionActions([]);
+        setActionTemplates([]);
+      } else {
+        setEvolutionAvailable(true);
+        setEvolutionHint('');
+        const [workflowsResult, overviewResult, actionsResult, templatesResult] = evolutionResults;
+        setAgentWorkflows(workflowsResult.status === 'fulfilled' ? (workflowsResult.value.items || []) : []);
+        setEvolutionOverview(overviewResult.status === 'fulfilled' ? overviewResult.value : null);
+        setEvolutionActions(actionsResult.status === 'fulfilled' ? (actionsResult.value.items || []) : []);
+        setActionTemplates(templatesResult.status === 'fulfilled' ? (templatesResult.value.items || []) : []);
+      }
     } catch (e: any) {
       setError(e.message || 'Learning 数据加载失败');
     } finally {
@@ -91,6 +117,10 @@ export default function GovernancePage() {
   };
 
   const handleReloadActions = async () => {
+    if (!evolutionAvailable) {
+      setError('当前后端未启用 evolution 路由，请先升级 backend 镜像。');
+      return;
+    }
     setLearningLoading(true);
     try {
       const actionsResp = await learningApi.evolutionActions({
@@ -109,6 +139,10 @@ export default function GovernancePage() {
   };
 
   const handleReplayLastSuccessChain = async () => {
+    if (!evolutionAvailable) {
+      setError('当前后端未启用 evolution 路由，请先升级 backend 镜像。');
+      return;
+    }
     setEvolutionLoading(true);
     try {
       const result = await learningApi.replayLastSuccessChain(5);
@@ -122,6 +156,10 @@ export default function GovernancePage() {
   };
 
   const handleCreateActionTemplate = async () => {
+    if (!evolutionAvailable) {
+      setError('当前后端未启用 evolution 路由，请先升级 backend 镜像。');
+      return;
+    }
     if (!templateName.trim()) {
       setError('请先填写模板名称');
       return;
@@ -152,6 +190,10 @@ export default function GovernancePage() {
   };
 
   const handleRunActionTemplate = async (templateId: string, dryRun: boolean) => {
+    if (!evolutionAvailable) {
+      setError('当前后端未启用 evolution 路由，请先升级 backend 镜像。');
+      return;
+    }
     setEvolutionLoading(true);
     try {
       const result = await learningApi.runActionTemplate(templateId, {
@@ -258,6 +300,10 @@ export default function GovernancePage() {
   };
 
   const handleIngestGatewayKnowledge = async () => {
+    if (!evolutionAvailable) {
+      setError('当前后端未启用 evolution 路由，请先升级 backend 镜像。');
+      return;
+    }
     if (!teamId) {
       setError('请先填写 Team ID');
       return;
@@ -290,6 +336,10 @@ export default function GovernancePage() {
   };
 
   const handleSummarizeRagToSkill = async () => {
+    if (!evolutionAvailable) {
+      setError('当前后端未启用 evolution 路由，请先升级 backend 镜像。');
+      return;
+    }
     setEvolutionLoading(true);
     try {
       const result = await learningApi.summarizeRagToSkill({
@@ -307,6 +357,10 @@ export default function GovernancePage() {
   };
 
   const handleGenerateAgentWorkflow = async () => {
+    if (!evolutionAvailable) {
+      setError('当前后端未启用 evolution 路由，请先升级 backend 镜像。');
+      return;
+    }
     setEvolutionLoading(true);
     try {
       const result = await learningApi.generateAgentWorkflow({
@@ -324,6 +378,10 @@ export default function GovernancePage() {
   };
 
   const handleOptimizeLatestWorkflow = async () => {
+    if (!evolutionAvailable) {
+      setError('当前后端未启用 evolution 路由，请先升级 backend 镜像。');
+      return;
+    }
     const latest = agentWorkflows[0];
     if (!latest?.workflow_id) {
       setError('暂无可优化的 Workflow，请先生成');
@@ -420,6 +478,11 @@ export default function GovernancePage() {
         <MetricBox label="草案提案" value={draftSkillCount} color="#1677ff" />
         <MetricBox label="模板数量" value={templateCount} color="#722ed1" />
       </div>
+      {!evolutionAvailable && (
+        <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 6, background: '#fffbe6', color: '#ad6800', fontSize: 13 }}>
+          {evolutionHint}
+        </div>
+      )}
       {error && <div style={{ color: 'red', marginBottom: 12, padding: '8px 12px', background: '#fff2f0', borderRadius: 4 }}>{error}<button onClick={() => setError('')} style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', color: '#ff4d4f' }}>✕</button></div>}
 
       <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid #f0f0f0' }}>
@@ -631,7 +694,7 @@ export default function GovernancePage() {
                   { label: '应用 Team Rules', onClick: handleApplyTeamRules },
                   { label: '会话知识入RAG', onClick: handleIngestGatewayKnowledge },
                 ]}
-                disabled={evolutionLoading}
+                disabled={evolutionLoading || !evolutionAvailable}
               />
               <FlowCard
                 title="阶段二：总结与编排"
@@ -641,7 +704,7 @@ export default function GovernancePage() {
                   { label: '生成Agent工作流', onClick: handleGenerateAgentWorkflow },
                   { label: '优化最新工作流', onClick: handleOptimizeLatestWorkflow },
                 ]}
-                disabled={evolutionLoading}
+                disabled={evolutionLoading || !evolutionAvailable}
               />
               <FlowCard
                 title="阶段三：验证与回放"
@@ -649,7 +712,7 @@ export default function GovernancePage() {
                 actions={[
                   { label: '重放最近成功动作链', onClick: handleReplayLastSuccessChain },
                 ]}
-                disabled={evolutionLoading}
+                disabled={evolutionLoading || !evolutionAvailable}
               />
             </div>
             <div style={{ marginTop: 10, fontSize: 12, color: '#666' }}>
