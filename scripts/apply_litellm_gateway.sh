@@ -8,9 +8,9 @@ MODE="${1:-apply}"
 BACKEND_BASE_URL="${BACKEND_BASE_URL:-http://localhost:8000}"
 ADMIN_TOKEN="${TEAM_AI_PLATFORM_ADMIN_TOKEN:-}"
 
-if [[ "${MODE}" != "apply" && "${MODE}" != "check" ]]; then
+if [[ "${MODE}" != "apply" && "${MODE}" != "check" && "${MODE}" != "sync" ]]; then
   echo "[ERROR] Unsupported mode: ${MODE}" >&2
-  echo "[INFO] Usage: bash scripts/apply_litellm_gateway.sh [apply|check]" >&2
+  echo "[INFO] Usage: bash scripts/apply_litellm_gateway.sh [apply|sync|check]" >&2
   exit 1
 fi
 
@@ -36,11 +36,36 @@ if [[ "${MODE}" == "check" ]]; then
   exit 0
 fi
 
-echo "[INFO] Applying runtime config from control plane..."
 AUTH_HEADER=()
 if [[ -n "${ADMIN_TOKEN}" ]]; then
   AUTH_HEADER=(-H "X-Admin-Token: ${ADMIN_TOKEN}")
 fi
+
+sync_gateway_models() {
+  echo "[INFO] Syncing desired models to LiteLLM gateway DB API..."
+  if ! curl -fsS -X POST "${BACKEND_BASE_URL}/api/providers/sync-gateway" \
+    -H "Content-Type: application/json" \
+    ${AUTH_HEADER[@]+"${AUTH_HEADER[@]}"} \
+    >/tmp/team_ai_gateway_sync.json 2>/tmp/team_ai_gateway_sync.err; then
+    echo "[ERROR] Failed to sync gateway model runtime." >&2
+    echo "[ERROR] Endpoint: ${BACKEND_BASE_URL}/api/providers/sync-gateway" >&2
+    if [[ -s /tmp/team_ai_gateway_sync.err ]]; then
+      cat /tmp/team_ai_gateway_sync.err >&2
+    fi
+    exit 1
+  fi
+
+  echo "[INFO] Gateway sync response:"
+  cat /tmp/team_ai_gateway_sync.json | cat
+}
+
+if [[ "${MODE}" == "sync" ]]; then
+  sync_gateway_models
+  echo "[INFO] Sync-only mode completed."
+  exit 0
+fi
+
+echo "[INFO] Applying runtime config from control plane..."
 
 if ! curl -fsS -X POST "${BACKEND_BASE_URL}/api/v1/runtime/litellm-config/apply" \
   -H "Content-Type: application/json" \
@@ -56,6 +81,8 @@ fi
 
 echo "[INFO] Runtime config apply response:"
 cat /tmp/team_ai_runtime_apply.json | cat
+
+sync_gateway_models
 
 echo "[INFO] Restarting LiteLLM gateway to apply latest config files..."
 docker compose restart litellm

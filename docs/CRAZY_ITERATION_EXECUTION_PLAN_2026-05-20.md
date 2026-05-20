@@ -102,11 +102,11 @@
 - [x] A4. 治理页增加 Repo 新增表单
 - [x] A5. 治理页增加 Repo Probe 操作
 - [x] A6. 治理页空态引导文案
-- [ ] A7. 前端构建与页面回归
+- [x] A7. 前端构建与页面回归
 
 ## B. 模型同步（待启动）
 - [ ] B1. 新建 `backend/app/services/litellm_sync.py`
-- [ ] B2. 增加配置渲染与热加载调用
+- [x] B2. 增加配置渲染与热加载调用（`scripts/apply_litellm_gateway.sh` 已支持 `apply + /api/providers/sync-gateway`）
 - [ ] B3. 增加失败回滚与审计日志
 - [ ] B4. 加入 E2E 脚本断言
 
@@ -143,7 +143,11 @@
 已开始执行：阶段 A（P0）
 - 已完成 API 扩展：repo create/probe
 - 已完成治理页功能增强：Team + Repo 初始化能力
-- 待完成：本地构建校验与提交发布
+- 已完成前端构建校验并发布
+
+继续迭代（阶段 B 入口强化）：
+- 已升级 `scripts/apply_litellm_gateway.sh`：从“仅写配置+重启”升级为“写配置+模型同步（/api/providers/sync-gateway）+健康检查”。
+- 新增 `sync` 模式，可单独执行网关模型差量同步。
 
 ---
 
