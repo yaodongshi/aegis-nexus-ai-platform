@@ -105,7 +105,7 @@
 - [x] A7. 前端构建与页面回归
 
 ## B. 模型同步（待启动）
-- [ ] B1. 新建 `backend/app/services/litellm_sync.py`
+- [x] B1. 新建 `backend/app/services/litellm_sync.py`（`store.py` 同步入口已委托 service）
 - [x] B2. 增加配置渲染与热加载调用（`scripts/apply_litellm_gateway.sh` 已支持 `apply + /api/providers/sync-gateway`）
 - [x] B3. 增加失败回滚与审计日志（`backend/app/store.py` 已实现配置文件回滚 + gateway sync best-effort rollback + `litellm/runtime_sync_audit.jsonl` 审计）
 - [x] B4. 加入 E2E 脚本断言（`scripts/e2e_full_business_pipeline.sh` Stage 13：sync-gateway + audit log）
@@ -152,6 +152,7 @@
 - 已完成前端构建校验并发布
 
 继续迭代（阶段 B 入口强化）：
+- 已落地 B1：新增 `backend/app/services/litellm_sync.py`，并将 `store.py` 中 LiteLLM 预览/渲染/自动同步/网关同步入口改为 service 委托。
 - 已升级 `scripts/apply_litellm_gateway.sh`：从“仅写配置+重启”升级为“写配置+模型同步（/api/providers/sync-gateway）+健康检查”。
 - 新增 `sync` 模式，可单独执行网关模型差量同步。
 - 已落地 B3：同步失败时执行配置文件回滚，并将同步/失败/回滚结果写入 `litellm/runtime_sync_audit.jsonl`。
