@@ -24,6 +24,7 @@ GIT_PASSWORD="${GIT_PASSWORD:-yds870928}"
 PLATFORM_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HOST_REPO_DIR="$PLATFORM_ROOT/backend/.aegis_e2e_repo/testskill"
 CONTAINER_REPO_DIR="/app/backend/.aegis_e2e_repo/testskill"
+VECTOR_SCRIPT="$PLATFORM_ROOT/scripts/vector_store_management.sh"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 PASS=0; FAIL=0
@@ -34,6 +35,30 @@ fail()  { echo -e "${RED}[FAIL]${NC} $*"; FAIL=$((FAIL+1)); FAIL_LOG+=("$*"); }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 log()   { echo -e "${BLUE}[*]${NC} $*"; }
 header(){ echo; echo -e "${BLUE}════════ $1 ════════${NC}"; }
+
+load_env_var_from_file() {
+  local key="$1"
+  local env_file="$2"
+  if [[ ! -f "$env_file" ]]; then
+    return 1
+  fi
+  python3 - "$key" "$env_file" <<'PY'
+import sys
+key = sys.argv[1]
+path = sys.argv[2]
+value = ""
+with open(path, "r", encoding="utf-8") as f:
+    for line in f:
+        s = line.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            continue
+        k, v = s.split("=", 1)
+        if k.strip() == key:
+            value = v.strip().strip('"').strip("'")
+            break
+print(value)
+PY
+}
 
 curl_admin() {
   local method="$1"; local path="$2"; local body="${3:-}"
@@ -307,6 +332,62 @@ ok "Overview: bundles=$B rules=$R"
 AC=$(curl_admin GET /api/evolution/actions)
 ACT=$(echo "$AC" | python3 -c "import sys,json;d=json.load(sys.stdin);i=d if isinstance(d,list) else d.get('items',[]);print(len(i))" 2>/dev/null || echo 0)
 ok "Action logs: $ACT"
+
+# ─── Stage 12: Vector Store create/manage/test ──────────────────────────────
+header "Stage 12: Vector Store Management smoke"
+if [[ -z "${LITELLM_MASTER_KEY:-}" ]]; then
+  LITELLM_MASTER_KEY="$(load_env_var_from_file LITELLM_MASTER_KEY "$PLATFORM_ROOT/.env" || true)"
+fi
+
+if [[ ! -x "$VECTOR_SCRIPT" ]]; then
+  fail "Vector script missing or not executable: $VECTOR_SCRIPT"
+elif [[ -z "${LITELLM_MASTER_KEY:-}" ]]; then
+  fail "LITELLM_MASTER_KEY is required for vector smoke test"
+else
+  export LITELLM_MASTER_KEY
+  export QDRANT_URL="${QDRANT_URL:-http://localhost:6333}"
+  export LITELLM_BASE_URL="${LITELLM_BASE_URL:-http://localhost:4000}"
+  export EMBEDDING_MODEL="${EMBEDDING_MODEL:-text-embedding-v3}"
+  export VECTOR_SIZE="${VECTOR_SIZE:-1024}"
+
+  VS_COLLECTION="e2e_vector_${TS_TAG}"
+
+  CREATE_OUT=$(bash "$VECTOR_SCRIPT" create "$VS_COLLECTION" "$VECTOR_SIZE" Cosine 2>&1 || true)
+  if echo "$CREATE_OUT" | grep -qi '"status"\s*:\s*"ok"'; then
+    ok "Vector store created: $VS_COLLECTION"
+  else
+    fail "Vector create failed: $(echo "$CREATE_OUT" | tail -n 2)"
+  fi
+
+  UPSERT_OUT=$(bash "$VECTOR_SCRIPT" upsert-text "$VS_COLLECTION" "doc_${TS_TAG}" "refactor sync I/O to async with pooling" '{"source":"e2e","tag":"vector"}' 2>&1 || true)
+  if echo "$UPSERT_OUT" | grep -qi '"status"\s*:\s*"ok"'; then
+    ok "Vector upsert succeeded"
+  else
+    fail "Vector upsert failed: $(echo "$UPSERT_OUT" | tail -n 2)"
+  fi
+
+  SEARCH_OUT=$(bash "$VECTOR_SCRIPT" search "$VS_COLLECTION" "async pooling refactor" 3 2>&1 || true)
+  SEARCH_HITS=$(echo "$SEARCH_OUT" | python3 -c "import sys,json,re
+t=sys.stdin.read()
+m=re.search(r'\{.*\}', t, re.S)
+if not m:
+    print(0); raise SystemExit
+d=json.loads(m.group(0))
+r=d.get('result',[])
+print(len(r) if isinstance(r,list) else 0)")
+  if [[ "${SEARCH_HITS:-0}" -ge 1 ]]; then
+    ok "Vector search returned hits=$SEARCH_HITS"
+  else
+    fail "Vector search returned 0 hits"
+  fi
+
+  STATS_OUT=$(bash "$VECTOR_SCRIPT" stats "$VS_COLLECTION" 2>&1 || true)
+  if echo "$STATS_OUT" | grep -qi '"status"\s*:\s*"ok"'; then
+    ok "Vector stats query ok"
+  else
+    fail "Vector stats failed: $(echo "$STATS_OUT" | tail -n 2)"
+  fi
+fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 header "Summary"

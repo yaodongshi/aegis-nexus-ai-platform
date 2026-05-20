@@ -127,7 +127,7 @@
 - [x] E1. 增加向量库配置样例（`config/vector_store.example.yaml`）
 - [x] E2. 增加向量库管理脚本（`scripts/vector_store_management.sh`，覆盖 create/manage/test）
 - [x] E3. 增加闭环运行手册（`docs/LITELLM_RAG_VECTOR_STORE_RUNBOOK.md`）
-- [ ] E4. 将向量库烟测加入 `e2e_full_business_pipeline.sh`
+- [x] E4. 将向量库烟测加入 `e2e_full_business_pipeline.sh`
 
 ---
 
@@ -159,6 +159,7 @@
 - 已交付向量库配置样例 `config/vector_store.example.yaml`。
 - 已交付向量库管理脚本 `scripts/vector_store_management.sh`（create/list/stats/delete/upsert/search/test）。
 - 已交付运行手册 `docs/LITELLM_RAG_VECTOR_STORE_RUNBOOK.md`，覆盖 Create/Manage/Test 三类流程。
+- 已将向量库烟测接入 `scripts/e2e_full_business_pipeline.sh`（Stage 12：create/upsert/search/stats 断言）。
 
 ---
 
