@@ -389,6 +389,29 @@ print(len(r) if isinstance(r,list) else 0)")
   fi
 fi
 
+# ─── Stage 13: LiteLLM sync rollback/audit assertions ───────────────────────
+header "Stage 13: LiteLLM sync + audit assertions"
+SYNC_RESP=$(curl_admin POST /api/providers/sync-gateway '{}')
+SYNC_OK=$(echo "$SYNC_RESP" | python3 -c "import sys,json;print('1' if json.load(sys.stdin).get('ok') else '0')" 2>/dev/null || echo 0)
+if [[ "$SYNC_OK" == "1" ]]; then
+  ok "Gateway sync endpoint returned ok=true"
+else
+  fail "Gateway sync failed: $(echo "$SYNC_RESP" | head -c 220)"
+fi
+
+AUDIT_LOG="$PLATFORM_ROOT/litellm/runtime_sync_audit.jsonl"
+if [[ -f "$AUDIT_LOG" ]]; then
+  ok "Audit log file exists: $AUDIT_LOG"
+else
+  fail "Audit log file missing: $AUDIT_LOG"
+fi
+
+if [[ -f "$AUDIT_LOG" ]] && grep -q '"action": "gateway_model_sync"' "$AUDIT_LOG"; then
+  ok "Audit log contains gateway_model_sync action"
+else
+  fail "Audit log missing gateway_model_sync action"
+fi
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 header "Summary"
 echo
