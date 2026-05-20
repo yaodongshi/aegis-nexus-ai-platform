@@ -112,7 +112,19 @@ Skill / Agent / MCP bundle  ──▶  平台 store  ──▶  MCP server  ─�
 
 ### Q4：Team AI Platform 中的"代码仓库管理"实际关联了哪些有用功能？
 
-**当前实际数据流**（已实现）：
+**你反馈的真实体验（已确认）**：
+
+- 菜单入口有（Governance -> 学习闭环运维），但默认常见为"空列表"。
+- 页面没有"新增 Git 仓库"表单，导致仓库列表为空时无法在 UI 内完成初始化。
+- MCP-Skill-RAG-Agent 区域要求手填 `Team ID`，且无团队下拉选择器；当用户不知道可用 `team_id` 时，会被拦在第一步。
+
+**为什么会出现"有菜单但没数据"**：
+
+- `gitRepos` 数据来自 `GET /api/git-repos`，未创建过仓库时返回空数组，页面只显示"未配置 Git 仓库"。
+- 当前治理页没有调用 `POST /api/git-repos` 的入口，所以无法在该页完成从 0 到 1。
+- Team 相关动作（上传 bundle / 生成规则 / 应用规则 / 入库）都依赖 `teamId` 输入框的手工填写，没有默认团队与选择器。
+
+**当前实际数据流（后端已实现）**：
 
 ```
 1. POST /api/git-repos                 → 创建 GitRepoRecord
@@ -126,12 +138,21 @@ Skill / Agent / MCP bundle  ──▶  平台 store  ──▶  MCP server  ─�
 
 证据：[`backend/app/store.py`](../backend/app/store.py) 的 `pull_git_repo_skills()` 实际会 `rglob("*.skill.json")` 并产出 skill record。
 
-**当前未关联的环节**（缺口）：
+**当前未打通的环节（缺口）**：
+
+- ❌ 前端缺 `Add Repository` 表单（导致仓库为空时，用户无法初始化列表）。
+- ❌ 前端缺团队选择器（只能手填 `team_id`，可用值不可见）。
 - ❌ Skill 落地后**没有**自动推送到 LiteLLM / MCP / IDE。
 - ❌ 没有把仓库里的 `.cursor/`, `.continue/`, `.claude/` 配置也作为团队规则来源。
 - ❌ 没有把 commit author → user_id 关联，无法做"个人 skill 私有 vs 团队公有"。
 
-**结论**：代码仓库管理 = **Skill 的 GitOps 来源**。它解决"团队 skill 怎么版本化、谁改了什么、冲突怎么处理"。但**还没有**把"仓库里的代码本身"（`requirements.txt`、`package.json`）作为信号反过来推荐 skill。
+**修正后的结论**：
+
+代码仓库管理在后端是可用的 GitOps 能力，但前端当前停在"查看/拉取"阶段，缺初始化入口和团队上下文选择，导致你看到的现象是"菜单存在但无法自助落地"。优先级最高的修复应是：
+
+1. Governance 增加 `Add Repository` Modal（name/path/branch/auto_commit/make_active）。
+2. Governance 增加团队下拉（数据源 `GET /api/v1/teams`），并把 `team_id` 与动作按钮联动。
+3. 在空态区域给出一键引导（"先创建团队 -> 再添加仓库 -> 再 Pull & Ingest"）。
 
 ---
 
