@@ -4,6 +4,8 @@
 日期：2026-05-19  
 适用范围：team_ai_platform 全量治理与实施
 
+> ⚠️ **现状校正（2026-05-20）**：本方案中"MCP Skill 包管理 — 通过 MCP 服务器统一上传/下载"为**目标状态**。截至当前提交，**MCP server 进程尚未实现**，相关端点仅为 REST CRUD；Skill → LiteLLM 模型同步亦未落地。请参考 [`ARCHITECTURE_GAP_ANALYSIS_2026-05-20.md`](./ARCHITECTURE_GAP_ANALYSIS_2026-05-20.md) 获取最新差距分析与 M1–M5 路线图。
+
 ## 1. 文档目的
 
 本方案以“产品经理 + 架构师 + 业务专家”联合视角，统一定义 AI-DevHub 的目标、能力边界、系统架构、实施路线、清理策略和验收标准。  

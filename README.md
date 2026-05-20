@@ -191,6 +191,16 @@ Failed:  0
 All e2e business pipeline stages passed.
 ```
 
+### What "MCP" means here (现状说明)
+
+> ⚠️ **重要**：当前 commit 中 `/api/skill-sync/mcp/*` 一系列端点**只是用了 "mcp" 这个命名**，并非 Anthropic Model Context Protocol 的真实实现。它们的 handler 内部全部是 `PlatformStore` 的 CRUD（bundle / team-rules）。
+>
+> **目前已落地**：Git 仓库管理（后端 100%、前端 90%）、Hook HMAC 签名、RAG 摄取、Skill CRUD + 向量搜索、RAG→Agent 工作流生成、Skill Pack 导出。
+>
+> **尚未落地**：真实 MCP server 进程（stdio + SSE，遵循 modelcontextprotocol）、平台 → LiteLLM 模型自动同步、IDE 客户端配置生成器（cursor / claude-code / continue）、技术栈自动识别。
+>
+> 完整的差距分析、概念澄清与 M1–M5 落地路线图见 [`docs/ARCHITECTURE_GAP_ANALYSIS_2026-05-20.md`](docs/ARCHITECTURE_GAP_ANALYSIS_2026-05-20.md)。
+
 ### Implementation notes
 
 - The script clones the Gitea repo into `backend/.aegis_e2e_repo/testskill`

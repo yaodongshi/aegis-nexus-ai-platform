@@ -1,6 +1,8 @@
 # Team AI Platform — 迭代计划与现状对比
 
 > 对齐声明（2026-05-19）：本文档保留用于历史差距分析，当前路线图以 `AI_DEVHUB_LITELLM_QDRANT_MASTER_PLAN.md` 的 Phase A/B/C 为准。
+>
+> ⚠️ **现状校正（2026-05-20）**：本计划中"客户端配置生成 30%"、"MCP 0%"、"Skill→LiteLLM 同步"等条目的真实完成度，以及 M1–M5 落地路线图，请以 [`ARCHITECTURE_GAP_ANALYSIS_2026-05-20.md`](./ARCHITECTURE_GAP_ANALYSIS_2026-05-20.md) 为准。
 
 **版本**: v1.0  
 **日期**: 2026-05-16  

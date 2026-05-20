@@ -3,6 +3,11 @@
 更新日期：2026-05-19  
 目标：循环进化、自我进化（目标不变）
 
+> ⚠️ **现状校正（2026-05-20）**
+> 本协议描述的是**目标架构**。截至 commit `8965c45`，文档中所有 "MCP" 字样**仅指 REST 端点 `/api/skill-sync/mcp/*` 的命名**，并不是 Anthropic Model Context Protocol。
+> 真实 MCP server 进程、stdio/SSE 协议、`tools/list`/`resources/list` 原语**均未实现**。
+> 完整差距分析与落地路线图请参见：[`ARCHITECTURE_GAP_ANALYSIS_2026-05-20.md`](./ARCHITECTURE_GAP_ANALYSIS_2026-05-20.md)。
+
 ## 1. 协议总览
 
 本协议定义团队级 AI 研发进化链路：
