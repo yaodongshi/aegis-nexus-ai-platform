@@ -112,16 +112,16 @@
 
 ## C. MCP Server（待启动）
 - [x] C1. 新增 `backend/mcp_server/` 框架（stdio + JSON-RPC skeleton）
-- [ ] C2. 实现 tools/resources 基础原语
-- [ ] C3. 实现 stack detection + 标签过滤
-- [ ] C4. 接入 docker-compose 服务编排
-- [ ] C5. 增加最小联调脚本
+- [x] C2. 实现 tools/resources 基础原语（`skills.list`/`skills.get_prompt`/`rag.search`/`task_runs.report` + `skill://`/`rag://`）
+- [x] C3. 实现 stack detection + 标签过滤（`backend/mcp_server/stack.py`）
+- [x] C4. 接入 docker-compose 服务编排（`team_ai_mcp` service + `/rpc`）
+- [x] C5. 增加最小联调脚本（`scripts/test_mcp_server_http_integration.sh`）
 
 ## D. 客户端配置生成（待启动）
-- [ ] D1. Cursor 配置模板
-- [ ] D2. Claude Code 配置模板
-- [ ] D3. Continue 配置模板
-- [ ] D4. CLI 初始化命令
+- [x] D1. Cursor 配置模板（`GET /api/v1/runtime/client-config/cursor`）
+- [x] D2. Claude Code 配置模板（`GET /api/v1/runtime/client-config/claude-code`）
+- [x] D3. Continue 配置模板（`GET /api/v1/runtime/client-config/continue`）
+- [x] D4. CLI 初始化命令（`./aegis init`）
 
 ## E. Vector Store Management（进行中）
 - [x] E1. 增加向量库配置样例（`config/vector_store.example.yaml`）
@@ -167,6 +167,16 @@
 继续迭代（阶段 C MCP 启动）：
 - 已落地 C1：新增 `backend/mcp_server/` 骨架（`main.py` / `server.py` / `README.md`），支持 stdio + JSON-RPC 初始化与最小工具调用。
 - 新增 `scripts/test_mcp_server_smoke.sh` 作为最小协议烟测脚本，验证 `initialize`、`tools/list`、`tools/call(health.ping)`。
+
+继续迭代（阶段 C MCP 完整化）：
+- 已落地 C2：补齐 MCP tools/resources 基础原语，直连 PlatformStore（skills/rag/task-run）。
+- 已落地 C3：新增技术栈识别与 skill 标签过滤（python/js/go/rust/odoo markers）。
+- 已落地 C4：`docker-compose.yml` 新增 `team_ai_mcp` 服务，提供 `/health` + `/rpc`。
+- 已落地 C5：新增 HTTP 联调脚本 `scripts/test_mcp_server_http_integration.sh`。
+
+继续迭代（阶段 D 客户端接入）：
+- 已落地 D1-D3：runtime config 路由新增 cursor/claude-code/continue 显式端点。
+- 已落地 D4：新增 CLI `./aegis init`（包装 `scripts/aegis`）一键拉取并写入本地配置。
 
 ---
 

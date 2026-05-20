@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+
+def _request_client_config(
+    *,
+    base_url: str,
+    app: str,
+    admin_token: str,
+    gateway_base_url: str | None,
+    api_key: str | None,
+) -> dict:
+    params = {}
+    if gateway_base_url:
+        params["base_url"] = gateway_base_url
+    if api_key:
+        params["api_key"] = api_key
+    query = urllib.parse.urlencode(params)
+    url = f"{base_url.rstrip('/')}/api/v1/runtime/client-config/{app}"
+    if query:
+        url = f"{url}?{query}"
+
+    req = urllib.request.Request(url)
+    if admin_token:
+        req.add_header("X-Admin-Token", admin_token)
+
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        body = resp.read().decode("utf-8")
+    return json.loads(body)
+
+
+def _target_file(output_dir: Path, app: str) -> Path:
+    if app == "cursor":
+        return output_dir / ".cursor" / "team-ai-gateway.json"
+    if app == "claude-code":
+        return output_dir / ".claude" / "settings.team-ai.json"
+    if app == "continue":
+        return output_dir / ".continue" / "config.team-ai.json"
+    return output_dir / ".opencode" / "team-ai-gateway.json"
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    admin_token = args.admin_token or os.getenv("TEAM_AI_PLATFORM_ADMIN_TOKEN", "")
+    if not admin_token:
+        print("Missing admin token: set --admin-token or TEAM_AI_PLATFORM_ADMIN_TOKEN")
+        return 2
+
+    api_key = args.api_key or os.getenv("LITELLM_MASTER_KEY", "")
+
+    try:
+        payload = _request_client_config(
+            base_url=args.base_url,
+            app=args.app,
+            admin_token=admin_token,
+            gateway_base_url=args.gateway_base_url,
+            api_key=api_key or None,
+        )
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore")
+        print(f"Request failed: HTTP {exc.code} {body}")
+        return 1
+    except Exception as exc:
+        print(f"Request failed: {exc}")
+        return 1
+
+    out_dir = Path(args.output_dir).resolve()
+    target = _target_file(out_dir, args.app)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps(payload.get("config", {}), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    print(f"Generated {args.app} config: {target}")
+    print(f"Models: {payload.get('model_count', 0)}")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="aegis")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    init_cmd = sub.add_parser("init", help="Generate IDE/CLI client config")
+    init_cmd.add_argument(
+        "--app",
+        default="cursor",
+        choices=["cursor", "claude-code", "continue", "opencode"],
+    )
+    init_cmd.add_argument(
+        "--base-url",
+        default="http://localhost:8000",
+        help="Team AI backend base url",
+    )
+    init_cmd.add_argument(
+        "--gateway-base-url",
+        default=None,
+        help="Optional gateway base url override",
+    )
+    init_cmd.add_argument("--api-key", default=None, help="Optional API key override")
+    init_cmd.add_argument(
+        "--admin-token",
+        default=None,
+        help="Admin token for runtime config endpoints",
+    )
+    init_cmd.add_argument("--output-dir", default=".", help="Output project root")
+
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+
+    if args.command == "init":
+        return cmd_init(args)
+
+    print("Unknown command")
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -36,6 +36,40 @@ services:
       qdrant:
         condition: service_started
 
+  team_ai_mcp:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: team-ai-mcp:latest
+    container_name: team-ai-mcp
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TEAM_AI_MCP_WORKSPACE: /workspace
+      TEAM_AI_PLATFORM_DB_DSN: ${TEAM_AI_PLATFORM_DB_DSN:-postgresql://litellm:litellm_password_change_me@litellm_db:5432/litellm}
+      TEAM_AI_PLATFORM_QDRANT_URL: ${TEAM_AI_PLATFORM_QDRANT_URL:-http://qdrant:6333}
+    working_dir: /app/backend
+    command:
+      - /bin/sh
+      - -lc
+      - pip install --no-cache-dir aiofiles python-multipart && uvicorn mcp_server.http_app:app --host 0.0.0.0 --port 8123
+    volumes:
+      - ./backend:/app/backend
+      - ./:/workspace:ro
+    ports:
+      - "127.0.0.1:8123:8123"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8123/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - team_ai_net
+    depends_on:
+      backend:
+        condition: service_healthy
+
   litellm:
     image: ghcr.io/berriai/litellm:main-stable
     container_name: team-litellm

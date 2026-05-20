@@ -146,3 +146,16 @@ def test_runtime_config_helicone_profile(monkeypatch, tmp_path: Path) -> None:
         env_content = Path(apply_payload["env_path"]).read_text(encoding="utf-8")
         assert "HELICONE_API_KEY=helicone-demo-key" in env_content
         assert "HELICONE_BASE_URL=https://helicone.example.com" in env_content
+
+
+def test_runtime_client_config_named_endpoints(monkeypatch) -> None:
+    monkeypatch.delenv("TEAM_AI_PLATFORM_ADMIN_TOKEN", raising=False)
+    monkeypatch.delenv("TEAM_AI_PLATFORM_DB_DSN", raising=False)
+
+    with TestClient(app) as client:
+        for app_name in ["cursor", "claude-code", "continue"]:
+            resp = client.get(f"/api/v1/runtime/client-config/{app_name}")
+            assert resp.status_code == 200, resp.text
+            payload = resp.json()
+            assert payload["app"] == app_name
+            assert isinstance(payload["config"], dict)

@@ -5,15 +5,18 @@ This directory contains the first MCP server skeleton for the Team AI Platform.
 ## Current scope
 
 - Transport: stdio
+- HTTP bridge: `/health` + `/rpc`
 - Protocol framing: JSON-RPC 2.0 (line-delimited JSON)
 - Implemented methods:
   - `initialize`
   - `ping`
   - `tools/list`
-  - `tools/call` (builtin `health.ping`)
-  - `resources/list` (empty)
-- Placeholder only:
+  - `tools/call` (`skills.list`, `skills.get_prompt`, `rag.search`, `task_runs.report`, `health.ping`)
+  - `resources/list` (`skill://`, `rag://`)
   - `resources/read`
+- Stack-aware filtering:
+  - workspace markers: `pyproject.toml`, `package.json`, `go.mod`, `Cargo.toml`, `__manifest__.py`
+  - environment override: `TEAM_AI_MCP_WORKSPACE`
 
 ## Run locally
 
@@ -22,8 +25,14 @@ cd backend
 python -m mcp_server.main
 ```
 
+or HTTP bridge:
+
+```bash
+cd backend
+python -m uvicorn mcp_server.http_app:app --host 127.0.0.1 --port 8123
+```
+
 ## Next steps
 
-- C2: add real `tools/*` and `resources/*` adapters for PlatformStore
-- C3: detect repository stack and tag-filter skill/resource loading
-- C4: add dedicated mcp service into docker-compose
+- C4 follow-up: wire SSE stream mode for IDE-native MCP transports
+- C5 follow-up: expand integration script with tool call and resource read assertions
