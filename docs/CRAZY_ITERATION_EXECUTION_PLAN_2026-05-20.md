@@ -111,7 +111,7 @@
 - [x] B4. 加入 E2E 脚本断言（`scripts/e2e_full_business_pipeline.sh` Stage 13：sync-gateway + audit log）
 
 ## C. MCP Server（待启动）
-- [ ] C1. 新增 `backend/mcp_server/` 框架
+- [x] C1. 新增 `backend/mcp_server/` 框架（stdio + JSON-RPC skeleton）
 - [ ] C2. 实现 tools/resources 基础原语
 - [ ] C3. 实现 stack detection + 标签过滤
 - [ ] C4. 接入 docker-compose 服务编排
@@ -163,6 +163,10 @@
 - 已交付向量库管理脚本 `scripts/vector_store_management.sh`（create/list/stats/delete/upsert/search/test）。
 - 已交付运行手册 `docs/LITELLM_RAG_VECTOR_STORE_RUNBOOK.md`，覆盖 Create/Manage/Test 三类流程。
 - 已将向量库烟测接入 `scripts/e2e_full_business_pipeline.sh`（Stage 12：create/upsert/search/stats 断言）。
+
+继续迭代（阶段 C MCP 启动）：
+- 已落地 C1：新增 `backend/mcp_server/` 骨架（`main.py` / `server.py` / `README.md`），支持 stdio + JSON-RPC 初始化与最小工具调用。
+- 新增 `scripts/test_mcp_server_smoke.sh` 作为最小协议烟测脚本，验证 `initialize`、`tools/list`、`tools/call(health.ping)`。
 
 ---
 
