@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 .pytest_cache/
 backend/.aegis_e2e_repo/
+litellm/runtime_sync_audit.jsonl
