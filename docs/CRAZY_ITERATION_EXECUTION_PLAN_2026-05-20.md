@@ -107,7 +107,7 @@
 ## B. 模型同步（待启动）
 - [ ] B1. 新建 `backend/app/services/litellm_sync.py`
 - [x] B2. 增加配置渲染与热加载调用（`scripts/apply_litellm_gateway.sh` 已支持 `apply + /api/providers/sync-gateway`）
-- [ ] B3. 增加失败回滚与审计日志
+- [x] B3. 增加失败回滚与审计日志（`backend/app/store.py` 已实现配置文件回滚 + gateway sync best-effort rollback + `litellm/runtime_sync_audit.jsonl` 审计）
 - [ ] B4. 加入 E2E 脚本断言
 
 ## C. MCP Server（待启动）
@@ -154,6 +154,7 @@
 继续迭代（阶段 B 入口强化）：
 - 已升级 `scripts/apply_litellm_gateway.sh`：从“仅写配置+重启”升级为“写配置+模型同步（/api/providers/sync-gateway）+健康检查”。
 - 新增 `sync` 模式，可单独执行网关模型差量同步。
+- 已落地 B3：同步失败时执行配置文件回滚，并将同步/失败/回滚结果写入 `litellm/runtime_sync_audit.jsonl`。
 
 继续迭代（阶段 E 向量库闭环）：
 - 已交付向量库配置样例 `config/vector_store.example.yaml`。
