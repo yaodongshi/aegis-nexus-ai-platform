@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { approvalsApi, learningApi, policiesApi } from '../../lib/api';
+import { approvalsApi, learningApi, policiesApi, teamsApi } from '../../lib/api';
 
 type GovTab = 'policies' | 'approvals' | 'learning';
 
@@ -37,12 +37,25 @@ export default function GovernancePage() {
   const [rotatedSecret, setRotatedSecret] = useState('');
   const [learningLoading, setLearningLoading] = useState(false);
   const [pullingRepoId, setPullingRepoId] = useState('');
+  const [probingRepoId, setProbingRepoId] = useState('');
   const [rotatingSecret, setRotatingSecret] = useState(false);
   const [evolutionLoading, setEvolutionLoading] = useState(false);
-  const [teamId, setTeamId] = useState('team_default');
+  const [teamId, setTeamId] = useState('');
+  const [teams, setTeams] = useState<any[]>([]);
+  const [creatingTeam, setCreatingTeam] = useState(false);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [newTeamDesc, setNewTeamDesc] = useState('');
   const [skillId, setSkillId] = useState('');
   const [createdBy, setCreatedBy] = useState('governance-ui');
   const [ruleSetId, setRuleSetId] = useState('');
+  const [creatingRepo, setCreatingRepo] = useState(false);
+  const [repoForm, setRepoForm] = useState({
+    name: '',
+    path: '/app/backend/.aegis_e2e_repo/',
+    branch: 'main',
+    auto_commit: false,
+    make_active: true,
+  });
   const [agentWorkflows, setAgentWorkflows] = useState<any[]>([]);
   const [evolutionResult, setEvolutionResult] = useState<any>(null);
   const [evolutionOverview, setEvolutionOverview] = useState<any>(null);
@@ -61,6 +74,19 @@ export default function GovernancePage() {
 
   const loadPolicies  = () => policiesApi.list().then(r => setPolicies(r.items)).catch(e => setError(e.message));
   const loadApprovals = () => approvalsApi.list().then(r => setApprovals(r.items)).catch(e => setError(e.message));
+  const loadTeams = async () => {
+    try {
+      const items = await teamsApi.list();
+      setTeams(items || []);
+      if (!teamId && items && items.length > 0) {
+        setTeamId(items[0].id);
+      }
+    } catch (e: any) {
+      setTeams([]);
+      setError(e.message || '团队列表加载失败');
+    }
+  };
+
   const loadLearning = async () => {
     setLearningLoading(true);
     try {
@@ -215,6 +241,62 @@ export default function GovernancePage() {
   };
 
   useEffect(() => { loadPolicies(); loadApprovals(); loadLearning(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadTeams(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleCreateTeam = async () => {
+    if (!newTeamName.trim()) {
+      setError('请先填写团队名称');
+      return;
+    }
+    setCreatingTeam(true);
+    try {
+      const created = await teamsApi.create(newTeamName.trim(), newTeamDesc.trim());
+      setTeamId(created?.id || '');
+      setNewTeamName('');
+      setNewTeamDesc('');
+      await loadTeams();
+    } catch (e: any) {
+      setError(e.message || '创建团队失败');
+    } finally {
+      setCreatingTeam(false);
+    }
+  };
+
+  const handleCreateRepo = async () => {
+    if (!repoForm.name.trim() || !repoForm.path.trim()) {
+      setError('请先填写仓库名称和路径');
+      return;
+    }
+    setCreatingRepo(true);
+    try {
+      await learningApi.createRepo({
+        name: repoForm.name.trim(),
+        path: repoForm.path.trim(),
+        branch: repoForm.branch.trim() || 'main',
+        auto_commit: repoForm.auto_commit,
+        make_active: repoForm.make_active,
+      });
+      setRepoForm((prev) => ({ ...prev, name: '' }));
+      await loadLearning();
+    } catch (e: any) {
+      setError(e.message || '创建 Git 仓库失败');
+    } finally {
+      setCreatingRepo(false);
+    }
+  };
+
+  const handleProbeRepo = async (repoId: string) => {
+    setProbingRepoId(repoId);
+    try {
+      const probe = await learningApi.probeRepo(repoId);
+      const probeMessage = `probe: path_exists=${probe.path_exists}, is_git_repo=${probe.is_git_repo}, branch=${probe.configured_branch}, active_branch=${probe.active_branch || '-'}, error=${probe.error || '-'}`;
+      setEvolutionResult(probeMessage);
+    } catch (e: any) {
+      setError(e.message || '探测仓库失败');
+    } finally {
+      setProbingRepoId('');
+    }
+  };
 
   const handlePullRepo = async (repoId: string) => {
     setPullingRepoId(repoId);
@@ -640,16 +722,62 @@ export default function GovernancePage() {
             <div style={{ ...panelStyle }}>
               <div style={{ fontWeight: 700, marginBottom: 8 }}>闭环参数上下文</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <input style={inputStyle} value={teamId} onChange={e => setTeamId(e.target.value)} placeholder="Team ID" />
+                  <select style={inputStyle} value={teamId} onChange={e => setTeamId(e.target.value)}>
+                    <option value="">请选择 Team</option>
+                    {teams.map((team) => (
+                      <option key={team.id} value={team.id}>{team.name} ({team.id})</option>
+                    ))}
+                  </select>
                 <input style={inputStyle} value={skillId} onChange={e => setSkillId(e.target.value)} placeholder="Skill ID" />
                 <input style={inputStyle} value={createdBy} onChange={e => setCreatedBy(e.target.value)} placeholder="Created By" />
                 <input style={inputStyle} value={ruleSetId} onChange={e => setRuleSetId(e.target.value)} placeholder="Rule Set ID" />
               </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, marginTop: 8 }}>
+                  <input style={inputStyle} value={newTeamName} onChange={e => setNewTeamName(e.target.value)} placeholder="新团队名称" />
+                  <input style={inputStyle} value={newTeamDesc} onChange={e => setNewTeamDesc(e.target.value)} placeholder="团队描述（可选）" />
+                  <button style={btnSecondary} onClick={handleCreateTeam} disabled={creatingTeam}>
+                    {creatingTeam ? '创建中...' : '创建团队'}
+                  </button>
+                </div>
+                <div style={{ fontSize: 12, color: '#667085', marginTop: 8 }}>
+                  提示：先创建 Team，再执行 Bundle/Rules/RAG 入库等动作。
+                </div>
             </div>
           </div>
 
           <div style={{ ...panelStyle, marginBottom: 12 }}>
             <div style={{ fontWeight: 600, marginBottom: 8 }}>仓库拉取</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr 120px auto auto', gap: 8, marginBottom: 10 }}>
+                <input
+                  style={inputStyle}
+                  value={repoForm.name}
+                  onChange={(e) => setRepoForm((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="仓库名称"
+                />
+                <input
+                  style={inputStyle}
+                  value={repoForm.path}
+                  onChange={(e) => setRepoForm((prev) => ({ ...prev, path: e.target.value }))}
+                  placeholder="容器路径，如 /app/backend/.aegis_e2e_repo/testskill"
+                />
+                <input
+                  style={inputStyle}
+                  value={repoForm.branch}
+                  onChange={(e) => setRepoForm((prev) => ({ ...prev, branch: e.target.value }))}
+                  placeholder="分支"
+                />
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#667085' }}>
+                  <input
+                    type="checkbox"
+                    checked={repoForm.auto_commit}
+                    onChange={(e) => setRepoForm((prev) => ({ ...prev, auto_commit: e.target.checked }))}
+                  />
+                  auto_commit
+                </label>
+                <button style={btnSecondary} onClick={handleCreateRepo} disabled={creatingRepo}>
+                  {creatingRepo ? '创建中...' : '添加仓库'}
+                </button>
+              </div>
             <table style={tableStyle}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #f0f0f0' }}>
@@ -663,15 +791,24 @@ export default function GovernancePage() {
                     <td style={tdStyle}>{r.branch}</td>
                     <td style={{ ...tdStyle, fontSize: 12, color: '#888' }}>{r.last_synced_at ? new Date(r.last_synced_at).toLocaleString() : '-'}</td>
                     <td style={tdStyle}>
-                      <button style={btnPrimary} onClick={() => handlePullRepo(r.id)} disabled={pullingRepoId === r.id}>
-                        {pullingRepoId === r.id ? '拉取中...' : 'Pull & Ingest'}
-                      </button>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button style={btnSecondary} onClick={() => handleProbeRepo(r.id)} disabled={probingRepoId === r.id}>
+                          {probingRepoId === r.id ? '探测中...' : 'Probe'}
+                        </button>
+                        <button style={btnPrimary} onClick={() => handlePullRepo(r.id)} disabled={pullingRepoId === r.id}>
+                          {pullingRepoId === r.id ? '拉取中...' : 'Pull & Ingest'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {gitRepos.length === 0 && <div style={{ color: '#aaa', marginTop: 10 }}>未配置 Git 仓库</div>}
+            {gitRepos.length === 0 && (
+              <div style={{ color: '#8c8c8c', marginTop: 10, fontSize: 13 }}>
+                当前没有仓库数据。推荐顺序：1) 创建 Team 2) 添加仓库 3) Probe 确认路径 4) Pull & Ingest。
+              </div>
+            )}
           </div>
 
           <div style={{ ...panelStyle, marginBottom: 12 }}>

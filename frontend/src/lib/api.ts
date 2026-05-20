@@ -361,6 +361,21 @@ export const learningApi = {
     govPost<any>(`/skill-updates/${updateId}/apply`, {}),
   gitRepos: (limit = 50, offset = 0) =>
     govGet<{ items: any[]; total: number }>(`/git-repos?limit=${limit}&offset=${offset}`),
+  createRepo: (data: {
+    name: string;
+    path: string;
+    branch?: string;
+    auto_commit?: boolean;
+    make_active?: boolean;
+  }) =>
+    govPost<any>('/git-repos', {
+      branch: 'main',
+      auto_commit: false,
+      make_active: true,
+      ...data,
+    }),
+  probeRepo: (repoId: string) =>
+    govGet<any>(`/git-repos/${repoId}/probe`),
   pullRepo: (repoId: string) =>
     govPost<any>(`/git-repos/${repoId}/pull`, {}),
   hookEvents: (limit = 50, offset = 0) =>
