@@ -26,6 +26,7 @@
 - FRONTEND_RAG_SKILL_SEPARATION.md
 - LIGHTWEIGHT_RAG_DESIGN.md
 - RAG_DATA_IMPORT_STRATEGY.md
+- LITELLM_RAG_VECTOR_STORE_RUNBOOK.md
 - V2_CONTROL_PLANE_API_CONTRACT.md
 - V2_DATA_MODEL_AND_MIGRATION_PLAN.md
 - VIRTUAL_KEY_CLI_IMPLEMENTATION_SPEC.md
@@ -57,3 +58,4 @@
 - 新增接口文档必须与 API 合同文档同步。
 - 阶段性报告默认进入 archive，不进入主目录。
 - 主目录只保留“当前可执行”文档。
+- 向量库相关操作必须同时提供：配置样例、可执行脚本、闭环验证步骤。

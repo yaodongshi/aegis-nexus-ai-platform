@@ -123,6 +123,12 @@
 - [ ] D3. Continue 配置模板
 - [ ] D4. CLI 初始化命令
 
+## E. Vector Store Management（进行中）
+- [x] E1. 增加向量库配置样例（`config/vector_store.example.yaml`）
+- [x] E2. 增加向量库管理脚本（`scripts/vector_store_management.sh`，覆盖 create/manage/test）
+- [x] E3. 增加闭环运行手册（`docs/LITELLM_RAG_VECTOR_STORE_RUNBOOK.md`）
+- [ ] E4. 将向量库烟测加入 `e2e_full_business_pipeline.sh`
+
 ---
 
 ## 5. 风险与控制
@@ -148,6 +154,11 @@
 继续迭代（阶段 B 入口强化）：
 - 已升级 `scripts/apply_litellm_gateway.sh`：从“仅写配置+重启”升级为“写配置+模型同步（/api/providers/sync-gateway）+健康检查”。
 - 新增 `sync` 模式，可单独执行网关模型差量同步。
+
+继续迭代（阶段 E 向量库闭环）：
+- 已交付向量库配置样例 `config/vector_store.example.yaml`。
+- 已交付向量库管理脚本 `scripts/vector_store_management.sh`（create/list/stats/delete/upsert/search/test）。
+- 已交付运行手册 `docs/LITELLM_RAG_VECTOR_STORE_RUNBOOK.md`，覆盖 Create/Manage/Test 三类流程。
 
 ---
 
