@@ -81,6 +81,17 @@ def _call_json(
         return int(exc.code), payload_json
 
 
+def _prioritize_model(
+    model_ids: list[str],
+    preferred_model: str,
+) -> list[str]:
+    if preferred_model not in model_ids:
+        return model_ids
+    return [preferred_model] + [
+        item for item in model_ids if item != preferred_model
+    ]
+
+
 @router.get("/runtime-health", response_model=PlatformRuntimeHealthResponse)
 def get_runtime_health() -> PlatformRuntimeHealthResponse:
     litellm_base = os.getenv("LITELLM_INTERNAL_BASE_URL", "http://litellm:4000").rstrip("/")
@@ -136,25 +147,56 @@ def get_runtime_health() -> PlatformRuntimeHealthResponse:
     )
 
     if chat_models:
-        chat_status, chat_payload = _call_json(
-            f"{litellm_base}/v1/chat/completions",
-            method="POST",
-            headers=headers,
-            payload={
-                "model": chat_models[0],
-                "messages": [{"role": "user", "content": "reply ok"}],
-                "max_tokens": 8,
-                "temperature": 0,
-            },
-            timeout=15,
-        )
-        chat_ok = chat_status == 200 and isinstance(chat_payload.get("choices"), list)
+        chat_probe_model = None
+        chat_probe_status = 0
+        chat_ok = False
+        failed_attempts: list[str] = []
+        chat_candidates = _prioritize_model(chat_models, "chat-default")
+
+        for candidate in chat_candidates[:3]:
+            chat_status, chat_payload = _call_json(
+                f"{litellm_base}/v1/chat/completions",
+                method="POST",
+                headers=headers,
+                payload={
+                    "model": candidate,
+                    "messages": [
+                        {"role": "user", "content": "reply ok"}
+                    ],
+                    "max_tokens": 8,
+                    "temperature": 0,
+                },
+                timeout=15,
+            )
+            probe_ok = chat_status == 200 and isinstance(
+                chat_payload.get("choices"), list
+            )
+            if probe_ok:
+                chat_probe_model = candidate
+                chat_probe_status = chat_status
+                chat_ok = True
+                break
+            failed_attempts.append(f"{candidate}:{chat_status}")
+
+        if chat_probe_model is None:
+            chat_probe_model = chat_candidates[0]
+            if failed_attempts:
+                first_status = failed_attempts[0].rsplit(":", 1)[-1]
+                chat_probe_status = int(first_status)
+
+        fallback_detail = ""
+        if chat_ok and failed_attempts:
+            fallback_detail = f" fallback={','.join(failed_attempts)}"
+
         checks.append(
             PlatformRuntimeHealthCheck(
                 name="chat_probe",
                 ok=chat_ok,
                 blocking=True,
-                detail=f"model={chat_models[0]} status={chat_status}",
+                detail=(
+                    f"model={chat_probe_model} status={chat_probe_status}"
+                    f"{fallback_detail}"
+                ),
             )
         )
     else:

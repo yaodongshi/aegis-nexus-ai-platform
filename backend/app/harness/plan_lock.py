@@ -16,6 +16,8 @@ from .schemas import (
     PlanCreateRequest,
     PlanRecord,
     PlanState,
+    ReplayTraceRequest,
+    ReplayTraceResponse,
     RolloutAction,
     RolloutDecisionRecord,
     RolloutDecisionRequest,
@@ -23,6 +25,7 @@ from .schemas import (
     RuntimeEventRecord,
     RuntimeEventType,
     TraceEventsResponse,
+    new_trace_id,
     utcnow,
 )
 
@@ -76,6 +79,10 @@ class ApprovalGateRequiredError(PermissionError):
 
 
 class ApprovalNotReadyError(PermissionError):
+    pass
+
+
+class ReplayCheckpointNotFoundError(ValueError):
     pass
 
 
@@ -328,6 +335,76 @@ class HarnessPlanLockStore:
                 events=[self._events[event_id] for event_id in event_ids],
             )
 
+    def replay_trace(
+        self,
+        trace_id: str,
+        payload: ReplayTraceRequest,
+    ) -> ReplayTraceResponse:
+        with self._lock:
+            plan_ids = list(self._plans_by_trace.get(trace_id, []))
+            if not plan_ids:
+                raise KeyError(trace_id)
+
+            source_plan = self._resolve_source_plan(
+                plan_ids,
+                payload.source_plan_id,
+            )
+            source_event_ids = self._events_by_plan.get(
+                source_plan.plan_id,
+                [],
+            )
+            source_events = [self._events[item] for item in source_event_ids]
+
+        stable_checkpoint = self._resolve_stable_checkpoint(source_events)
+        if stable_checkpoint is None:
+            raise ReplayCheckpointNotFoundError(
+                "no stable checkpoint event found for replay",
+            )
+
+        replay_trace_id = new_trace_id()
+        replay_metadata = dict(source_plan.metadata)
+        replay_metadata["replay"] = {
+            "source_trace_id": trace_id,
+            "source_plan_id": source_plan.plan_id,
+            "checkpoint_event_id": stable_checkpoint.event_id,
+            "actor": payload.actor,
+        }
+        replay_plan_payload = PlanCreateRequest(
+            capability_alias=source_plan.capability_alias,
+            strategy_id=source_plan.strategy_id,
+            metadata=replay_metadata,
+        )
+        replay_plan = self.create_plan(
+            replay_plan_payload,
+            trace_id=replay_trace_id,
+        )
+
+        replay_count = 0
+        checkpoint_chain = self._checkpoint_event_chain(stable_checkpoint)
+        replay_checkpoint_event = stable_checkpoint
+        for event_type in checkpoint_chain:
+            replay_count += 1
+            replay_payload = RuntimeEventIngestRequest(
+                event_type=event_type,
+                source="replay",
+                payload={
+                    "source_trace_id": trace_id,
+                    "source_plan_id": source_plan.plan_id,
+                    "checkpoint_event_id": stable_checkpoint.event_id,
+                },
+            )
+            replay_plan, replay_checkpoint_event = self.ingest_event(
+                replay_plan.plan_id,
+                trace_id=replay_trace_id,
+                payload=replay_payload,
+            )
+
+        return ReplayTraceResponse(
+            replay_plan=replay_plan,
+            replay_checkpoint_event=replay_checkpoint_event,
+            replayed_event_count=replay_count,
+        )
+
     def get_metrics_snapshot(
         self,
         capability_alias: str | None = None,
@@ -486,3 +563,47 @@ class HarnessPlanLockStore:
         ordered = sorted(values)
         index = max(0, math.ceil(q * len(ordered)) - 1)
         return ordered[index]
+
+    def _resolve_source_plan(
+        self,
+        trace_plan_ids: list[str],
+        source_plan_id: str | None,
+    ) -> PlanRecord:
+        if source_plan_id:
+            plan = self._plans.get(source_plan_id)
+            if plan is None or source_plan_id not in trace_plan_ids:
+                raise KeyError(source_plan_id)
+            return plan
+
+        return self._plans[trace_plan_ids[-1]]
+
+    @staticmethod
+    def _resolve_stable_checkpoint(
+        events: list[RuntimeEventRecord],
+    ) -> RuntimeEventRecord | None:
+        stable_types = {
+            RuntimeEventType.START,
+            RuntimeEventType.PREPARE,
+            RuntimeEventType.VALIDATE,
+        }
+        for event in reversed(events):
+            if event.event_type in stable_types:
+                return event
+        return None
+
+    @staticmethod
+    def _checkpoint_event_chain(
+        checkpoint: RuntimeEventRecord,
+    ) -> list[RuntimeEventType]:
+        if checkpoint.event_type is RuntimeEventType.START:
+            return [
+                RuntimeEventType.VALIDATE,
+                RuntimeEventType.PREPARE,
+                RuntimeEventType.START,
+            ]
+        if checkpoint.event_type is RuntimeEventType.PREPARE:
+            return [
+                RuntimeEventType.VALIDATE,
+                RuntimeEventType.PREPARE,
+            ]
+        return [RuntimeEventType.VALIDATE]

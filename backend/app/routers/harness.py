@@ -7,6 +7,7 @@ from ..harness import (
     HarnessPlanLockStore,
     InvalidPlanTransitionError,
     InvalidRolloutDecisionError,
+    ReplayCheckpointNotFoundError,
     RuntimeAdapterRegistry,
 )
 from ..harness.schemas import (
@@ -17,6 +18,8 @@ from ..harness.schemas import (
     CapabilityAliasContractUpsertRequest,
     PlanCreateRequest,
     PlanRecord,
+    ReplayTraceRequest,
+    ReplayTraceResponse,
     RolloutDecisionRecord,
     RolloutDecisionRequest,
     RuntimeEventIngestRequest,
@@ -293,3 +296,23 @@ def get_trace(
     store: HarnessPlanLockStore = Depends(get_harness_store),
 ) -> TraceEventsResponse:
     return store.get_trace(trace_id)
+
+
+@router.post("/traces/{trace_id}/replay", response_model=ReplayTraceResponse)
+def replay_trace(
+    trace_id: str,
+    payload: ReplayTraceRequest,
+    store: HarnessPlanLockStore = Depends(get_harness_store),
+) -> ReplayTraceResponse:
+    try:
+        return store.replay_trace(trace_id=trace_id, payload=payload)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trace or source plan not found",
+        ) from exc
+    except ReplayCheckpointNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc

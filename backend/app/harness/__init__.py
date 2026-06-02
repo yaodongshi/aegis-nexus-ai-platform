@@ -3,6 +3,7 @@ from .plan_lock import (
     HarnessPlanLockStore,
     InvalidPlanTransitionError,
     InvalidRolloutDecisionError,
+    ReplayCheckpointNotFoundError,
 )
 from .runtime_adapter import RuntimeAdapterRegistry
 
@@ -11,5 +12,6 @@ __all__ = [
     "HarnessPlanLockStore",
     "InvalidPlanTransitionError",
     "InvalidRolloutDecisionError",
+    "ReplayCheckpointNotFoundError",
     "RuntimeAdapterRegistry",
 ]

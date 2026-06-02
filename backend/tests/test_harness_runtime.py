@@ -380,3 +380,57 @@ def test_harness_alert_evaluation(monkeypatch) -> None:
         assert "high_avg_latency" in alert_codes
         assert "high_total_cost" in alert_codes
         assert "high_rollback_rate" in alert_codes
+
+
+def test_replay_trace_from_last_stable_checkpoint(monkeypatch) -> None:
+    monkeypatch.delenv("TEAM_AI_PLATFORM_ADMIN_TOKEN", raising=False)
+    monkeypatch.delenv("TEAM_AI_PLATFORM_DB_DSN", raising=False)
+
+    with TestClient(app) as client:
+        capability_alias = "replay-default"
+        upsert_resp = client.put(
+            f"/api/v1/harness/capabilities/{capability_alias}",
+            json={
+                "contract_version": "v1",
+                "runtime_adapter": "noop",
+                "stable_strategy_id": "strategy-replay-v1",
+                "canary_traffic_percent": 0,
+            },
+        )
+        assert upsert_resp.status_code == 200, upsert_resp.text
+
+        trace_id = "trace-replay-source"
+        source_plan_id = _create_plan(client, capability_alias, trace_id)
+        _ingest_event(client, source_plan_id, trace_id, "validate")
+        _ingest_event(client, source_plan_id, trace_id, "prepare")
+        _ingest_event(client, source_plan_id, trace_id, "start")
+        _ingest_event(client, source_plan_id, trace_id, "fail")
+
+        replay_resp = client.post(
+            f"/api/v1/harness/traces/{trace_id}/replay",
+            json={"source_plan_id": source_plan_id, "actor": "qa-replay"},
+        )
+        assert replay_resp.status_code == 200, replay_resp.text
+        replay_payload = replay_resp.json()
+
+        replay_plan = replay_payload["replay_plan"]
+        assert replay_plan["state"] == "running"
+        assert (
+            replay_payload["replay_checkpoint_event"]["event_type"]
+            == "start"
+        )
+        assert replay_payload["replayed_event_count"] == 3
+        assert replay_plan["metadata"]["replay"]["source_trace_id"] == trace_id
+        assert (
+            replay_plan["metadata"]["replay"]["source_plan_id"]
+            == source_plan_id
+        )
+
+        replay_trace_id = replay_plan["trace_id"]
+        replay_trace_resp = client.get(
+            f"/api/v1/harness/traces/{replay_trace_id}"
+        )
+        assert replay_trace_resp.status_code == 200, replay_trace_resp.text
+        replay_events = replay_trace_resp.json()["events"]
+        assert len(replay_events) == 3
+        assert replay_events[-1]["event_type"] == "start"

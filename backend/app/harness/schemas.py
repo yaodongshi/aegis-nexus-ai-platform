@@ -128,6 +128,17 @@ class RuntimeEventIngestResponse(BaseModel):
     event: RuntimeEventRecord
 
 
+class ReplayTraceRequest(BaseModel):
+    source_plan_id: str | None = Field(default=None, max_length=128)
+    actor: str = Field(default="operator", min_length=1, max_length=128)
+
+
+class ReplayTraceResponse(BaseModel):
+    replay_plan: PlanRecord
+    replay_checkpoint_event: RuntimeEventRecord
+    replayed_event_count: int
+
+
 class TraceEventsResponse(BaseModel):
     trace_id: str
     plans: list[PlanRecord]
