@@ -30,7 +30,7 @@
 
 - [x] 5.1 Integrate first runtime backend (LangGraph or OpenAI Agents SDK) via adapter.
 - [x] 5.2 Implement conformance test suite to verify adapter behavior.
-- [ ] 5.3 Document license/compliance checklist for reused open-source components.
+- [x] 5.3 Document license/compliance checklist for reused open-source components.
 - [ ] 5.4 Run pilot on one production-like capability alias and collect baseline metrics.
 
 ## 6. Delivery and Acceptance
