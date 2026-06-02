@@ -9,6 +9,7 @@ A testable Team AI platform with LiteLLM + Qdrant as the core architecture:
 ## 架构基线与执行文档
 
 - 主方案：docs/AI_DEVHUB_LITELLM_QDRANT_MASTER_PLAN.md
+- 网关实施与接入：docs/LITELLM_GATEWAY_INTEGRATION_GUIDE.md
 - 文档索引：docs/DOCS_INDEX.md
 - 历史归档：docs/archive/2026-05-19/
 

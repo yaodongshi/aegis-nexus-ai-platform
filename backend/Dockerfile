@@ -9,8 +9,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
 
-COPY backend/requirements.txt /app/backend/requirements.txt
-RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+COPY backend/requirements.runtime.txt /app/backend/requirements.runtime.txt
+RUN pip install --no-cache-dir -r /app/backend/requirements.runtime.txt
 
 COPY backend /app/backend
 

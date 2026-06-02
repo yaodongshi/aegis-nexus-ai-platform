@@ -1,2 +1,42 @@
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/LITELLM_DATABASE_URL
+  store_model_in_db: true
+
+litellm_settings:
+  drop_params: true
+  set_verbose: false
+  telemetry: false
+
+router_settings:
+  routing_strategy: simple-shuffle
+  num_retries: 2
+  timeout: 60
+  allow_fallbacks: true
+  model_group_alias:
+    chat-default: gpt-4o
+    embed-default: text-embedding-v3
+  fallbacks:
+    - gpt-4o:
+        - gpt-4.1
+
+# Baseline static models for cold start.
+# The admin runtime apply flow may overwrite this file with provider-synced content.
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+      api_base: https://api.openai.com/v1
+
+  - model_name: gpt-4.1
+    litellm_params:
+      model: openai/gpt-4.1
+      api_key: os.environ/OPENAI_API_KEY
+      api_base: https://api.openai.com/v1
+
+  - model_name: text-embedding-v3
+    litellm_params:
+      model: openai/text-embedding-3-large
+      api_key: os.environ/OPENAI_API_KEY
+      api_base: https://api.openai.com/v1

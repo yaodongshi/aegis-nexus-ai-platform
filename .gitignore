@@ -1,7 +1,16 @@
 .env
-reports/
+reports/*
+!reports/
+!reports/*.md
 __pycache__/
 *.pyc
 .pytest_cache/
 backend/.aegis_e2e_repo/
 litellm/runtime_sync_audit.jsonl
+
+# Do not submit local OpenSpec working files
+openspec/
+
+# Ignore temporary/local shell experiments (keep named scripts tracked)
+scripts/tmp_*.sh
+scripts/local_*.sh

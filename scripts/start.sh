@@ -19,6 +19,14 @@ cd "${PROJECT_ROOT}"
 
 OPEN_WEBUI_PORT="${OPEN_WEBUI_PORT:-9000}"
 
+if [[ -z "${LITELLM_MASTER_KEY:-}" ]]; then
+  echo "[WARN] LITELLM_MASTER_KEY is empty. Gateway authenticated checks may fail." >&2
+fi
+
+if [[ -z "${TEAM_AI_PLATFORM_ADMIN_TOKEN:-}" ]]; then
+  echo "[WARN] TEAM_AI_PLATFORM_ADMIN_TOKEN is empty. Protected admin APIs require token when enabled." >&2
+fi
+
 echo "[INFO] Starting Team AI Platform stack..."
 docker compose up -d
 
@@ -30,3 +38,4 @@ echo "[INFO] LiteLLM gateway: http://localhost:4000/v1"
 echo "[INFO] Qdrant vector store: internal service on http://localhost:6333"
 echo "[INFO] Apply gateway changes after provider updates: bash scripts/apply_litellm_gateway.sh"
 echo "[INFO] Minimal verification: bash scripts/healthcheck.sh"
+echo "[INFO] Optional gateway model check: bash scripts/apply_litellm_gateway.sh check"
