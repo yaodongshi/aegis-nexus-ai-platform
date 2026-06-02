@@ -1999,6 +1999,46 @@ class PlatformStore:
         docs = self.list_knowledge(status="active")[: payload.limit]
         generated_update_ids: list[str] = []
         created_by = (payload.created_by or "rag-summarizer").strip() or "rag-summarizer"
+        rag_task_run_id = "taskrun_rag_summarizer"
+
+        # RAG summarize generates skill updates outside the normal task-run reporting flow.
+        # Ensure a stable synthetic task_run exists so FK constraints are satisfied.
+        if self._db_enabled:
+            now = datetime.now(UTC)
+            with self._connect() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO backend_task_runs (
+                        task_run_id, tool_type, user_id, task_title, summary,
+                        error_log, lessons_learned, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, NULL, NULL, %s, %s)
+                    ON CONFLICT (task_run_id) DO NOTHING
+                    """,
+                    (
+                        rag_task_run_id,
+                        "other",
+                        created_by,
+                        "RAG summarize to skill",
+                        "System-generated summarize workflow",
+                        now,
+                        now,
+                    ),
+                )
+        else:
+            now = datetime.now(UTC)
+            if rag_task_run_id not in self.task_runs:
+                self.task_runs[rag_task_run_id] = TaskRunRecord(
+                    id=rag_task_run_id,
+                    tool_type="other",
+                    user_id=created_by,
+                    task_title="RAG summarize to skill",
+                    summary="System-generated summarize workflow",
+                    error_log=None,
+                    lessons_learned=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+
         for doc in docs:
             doc_tags = set(doc.tags or [])
             if "gateway-knowledge" not in doc_tags and "passive-rag" not in doc_tags:
@@ -2009,7 +2049,7 @@ class PlatformStore:
             suggestion_name = f"RAG总结:{doc.title[:24]}"
             record = SkillUpdateRecord(
                 id=update_id,
-                task_run_id="taskrun_rag_summarizer",
+                task_run_id=rag_task_run_id,
                 skill_id=None,
                 git_repo_id=None,
                 proposed_skill_name=suggestion_name,

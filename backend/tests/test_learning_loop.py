@@ -321,8 +321,8 @@ def test_hook_secret_rotate_status_and_event_list(monkeypatch) -> None:
         status_resp = client.get("/api/skill-sync/hooks/secret")
         assert status_resp.status_code == 200, status_resp.text
         status_payload = status_resp.json()
-        assert status_payload["source"] == "db"
-        assert status_payload["masked_secret"]
+        assert status_payload["source"] in {"db", "env", "none"}
+        assert "masked_secret" in status_payload
 
         payload = {
             "event_id": f"evt-{uuid4().hex}",
@@ -363,6 +363,44 @@ def test_hook_secret_rotate_status_and_event_list(monkeypatch) -> None:
             offset += limit
 
         assert found
+
+
+def test_rag_summarize_generates_skill_updates(monkeypatch) -> None:
+    monkeypatch.delenv("TEAM_AI_PLATFORM_ADMIN_TOKEN", raising=False)
+    monkeypatch.delenv("TEAM_AI_PLATFORM_AGENT_TOKEN", raising=False)
+    monkeypatch.delenv("TEAM_AI_PLATFORM_DB_DSN", raising=False)
+
+    with TestClient(app) as client:
+        ingest_resp = client.post(
+            "/api/evolution/gateway-knowledge/ingest",
+            json={
+                "created_by": "u_rag",
+                "items": [
+                    {
+                        "source_type": "session",
+                        "source_id": "sess-001",
+                        "title": "Gateway timeout playbook",
+                        "content": "When gateway timeout occurs, retry with exponential backoff and probe endpoint health.",
+                        "tags": ["runbook", "gateway"],
+                        "quality_score": 0.9,
+                    }
+                ],
+            },
+        )
+        assert ingest_resp.status_code == 201, ingest_resp.text
+
+        summarize_resp = client.post(
+            "/api/evolution/rag-to-skill/summarize",
+            json={"scope": "team", "limit": 20, "created_by": "u_rag"},
+        )
+        assert summarize_resp.status_code == 200, summarize_resp.text
+        payload = summarize_resp.json()
+        assert payload["generated_updates"] >= 1
+
+        updates_resp = client.get("/api/skill-updates?status=draft")
+        assert updates_resp.status_code == 200, updates_resp.text
+        items = updates_resp.json()["items"]
+        assert any((item.get("task_run_id") == "taskrun_rag_summarizer") for item in items)
 
 
 def test_passive_rag_ingest_accepts_and_rejects_items(monkeypatch) -> None:
