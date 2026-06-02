@@ -1,16 +1,16 @@
 ## 1. Planning and Contracts
 
-- [ ] 1.1 Define `harness-runtime` capability spec and validate OpenSpec format.
-- [ ] 1.2 Define task plan state machine and invalid transition rules.
-- [ ] 1.3 Define runtime event schema (`RuntimeEvent`) and trace propagation fields.
+- [x] 1.1 Define `harness-runtime` capability spec and validate OpenSpec format.
+- [x] 1.2 Define task plan state machine and invalid transition rules.
+- [x] 1.3 Define runtime event schema (`RuntimeEvent`) and trace propagation fields.
 - [ ] 1.4 Define capability alias contract versioning and rollout metadata.
 
 ## 2. Runtime Foundation
 
-- [ ] 2.1 Create `backend/app/harness/` module skeleton (`runtime_adapter.py`, `plan_lock.py`, `role_executor.py`, `trace_bridge.py`).
-- [ ] 2.2 Implement Task Plan Lock persistence and transition guard.
-- [ ] 2.3 Add runtime adapter interface and one concrete adapter path.
-- [ ] 2.4 Add harness router (`/api/v1/harness/*`) for plan creation, state query, and event ingestion.
+- [x] 2.1 Create `backend/app/harness/` module skeleton (`runtime_adapter.py`, `plan_lock.py`, `role_executor.py`, `trace_bridge.py`).
+- [x] 2.2 Implement Task Plan Lock persistence and transition guard.
+- [x] 2.3 Add runtime adapter interface and one concrete adapter path.
+- [x] 2.4 Add harness router (`/api/v1/harness/*`) for plan creation, state query, and event ingestion.
 
 ## 3. Governance and Rollout
 

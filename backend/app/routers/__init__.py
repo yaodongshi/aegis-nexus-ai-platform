@@ -1,8 +1,23 @@
-from . import approvals, control_plane_v2, health, keys, learning, models, policies, provider_console, providers, runtime_config, sessions, skills
+from . import (
+    approvals,
+    control_plane_v2,
+    harness,
+    health,
+    keys,
+    learning,
+    models,
+    policies,
+    provider_console,
+    providers,
+    runtime_config,
+    sessions,
+    skills,
+)
 
 __all__ = [
     "approvals",
     "control_plane_v2",
+    "harness",
     "health",
     "keys",
     "learning",

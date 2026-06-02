@@ -10,6 +10,7 @@ from .core.config import get_settings
 from .routers import (
     approvals,
     control_plane_v2,
+    harness,
     health,
     keys,
     learning,
@@ -23,6 +24,7 @@ from .routers import (
     sessions,
     skills,
 )
+from .harness import HarnessPlanLockStore, RuntimeAdapterRegistry
 from .store import PlatformStore
 from .api.v1 import (
     agents_router,
@@ -44,6 +46,8 @@ from .api.v1 import (
 async def lifespan(app: FastAPI):
     app.state.store = PlatformStore()
     app.state.store.seed_defaults()
+    app.state.harness_store = HarnessPlanLockStore()
+    app.state.runtime_registry = RuntimeAdapterRegistry()
     yield
 
 
@@ -89,6 +93,7 @@ app.include_router(sessions.router)
 app.include_router(policies.router)
 app.include_router(approvals.router)
 app.include_router(control_plane_v2.router)
+app.include_router(harness.router)
 
 # 新增主线业务API
 app.include_router(users_router, prefix="/api/v1/users", tags=["users"])
