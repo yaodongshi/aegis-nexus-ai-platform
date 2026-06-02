@@ -13,6 +13,10 @@
   - 部署、提测、验收、用户接入统一入口
 - USER_MANUAL.md
   - 统一用户手册（后续持续迭代）
+- FULL_IDIOT_PROOF_SETUP_AND_OPERATION.md
+  - 全流程傻瓜化配置手册（从 0 到团队可用）
+- AUTO_EVOLUTION_LAST_APPROVAL_GUIDE.md
+  - 自动自我进化流程（程序自动流转 + 最后人工审批）
 - BUSINESS_ARCH_TECH_ROUTE_MATRIX_TOPOLOGY.md
   - 业务架构、技术路线、矩阵与拓扑统一文档
 - HARNESS_OPEN_SOURCE_IMPLEMENTATION_BLUEPRINT_2026-06-02.md
