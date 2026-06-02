@@ -5,9 +5,14 @@ from threading import Lock
 from uuid import uuid4
 
 from .schemas import (
+    CapabilityAliasContractRecord,
+    CapabilityAliasContractUpsertRequest,
     PlanCreateRequest,
     PlanRecord,
     PlanState,
+    RolloutAction,
+    RolloutDecisionRecord,
+    RolloutDecisionRequest,
     RuntimeEventIngestRequest,
     RuntimeEventRecord,
     RuntimeEventType,
@@ -52,6 +57,14 @@ class InvalidPlanTransitionError(ValueError):
     pass
 
 
+class CapabilityAliasNotFoundError(KeyError):
+    pass
+
+
+class InvalidRolloutDecisionError(ValueError):
+    pass
+
+
 class HarnessPlanLockStore:
     def __init__(self) -> None:
         self._lock = Lock()
@@ -60,6 +73,143 @@ class HarnessPlanLockStore:
         self._events_by_plan: dict[str, list[str]] = defaultdict(list)
         self._plans_by_trace: dict[str, list[str]] = defaultdict(list)
         self._events_by_trace: dict[str, list[str]] = defaultdict(list)
+        self._capability_contracts: dict[
+            str,
+            CapabilityAliasContractRecord,
+        ] = {}
+        self._rollout_decisions: dict[str, RolloutDecisionRecord] = {}
+        self._decisions_by_alias: dict[str, list[str]] = defaultdict(list)
+
+    def upsert_capability_contract(
+        self,
+        capability_alias: str,
+        payload: CapabilityAliasContractUpsertRequest,
+    ) -> CapabilityAliasContractRecord:
+        now = utcnow()
+        with self._lock:
+            existing = self._capability_contracts.get(capability_alias)
+            created_at = existing.created_at if existing else now
+            record = CapabilityAliasContractRecord(
+                capability_alias=capability_alias,
+                contract_version=payload.contract_version,
+                runtime_adapter=payload.runtime_adapter,
+                stable_strategy_id=payload.stable_strategy_id,
+                canary_strategy_id=payload.canary_strategy_id,
+                canary_traffic_percent=payload.canary_traffic_percent,
+                metadata=payload.metadata,
+                created_at=created_at,
+                updated_at=now,
+            )
+            self._capability_contracts[capability_alias] = record
+            return record
+
+    def get_capability_contract(
+        self,
+        capability_alias: str,
+    ) -> CapabilityAliasContractRecord | None:
+        with self._lock:
+            return self._capability_contracts.get(capability_alias)
+
+    def list_capability_contracts(self) -> list[CapabilityAliasContractRecord]:
+        with self._lock:
+            return list(self._capability_contracts.values())
+
+    def record_rollout_decision(
+        self,
+        capability_alias: str,
+        payload: RolloutDecisionRequest,
+    ) -> tuple[CapabilityAliasContractRecord, RolloutDecisionRecord]:
+        with self._lock:
+            record = self._capability_contracts.get(capability_alias)
+            if record is None:
+                raise CapabilityAliasNotFoundError(capability_alias)
+
+            stable_before = record.stable_strategy_id
+            canary_before = record.canary_strategy_id
+            canary_after = canary_before
+            stable_after = stable_before
+            canary_traffic_after = record.canary_traffic_percent
+
+            if payload.action is RolloutAction.CANARY:
+                candidate = payload.candidate_strategy_id
+                if not candidate:
+                    raise InvalidRolloutDecisionError(
+                        "candidate_strategy_id is required for canary",
+                    )
+                canary_after = candidate
+                if payload.canary_traffic_percent is None:
+                    canary_traffic_after = max(1, canary_traffic_after)
+                else:
+                    canary_traffic_after = payload.canary_traffic_percent
+
+            if payload.action is RolloutAction.PROMOTE:
+                candidate = payload.candidate_strategy_id or canary_before
+                if not candidate:
+                    raise InvalidRolloutDecisionError(
+                        "candidate_strategy_id is required for promote",
+                    )
+                stable_after = candidate
+                canary_after = None
+                canary_traffic_after = 0
+
+            if payload.action is RolloutAction.DEMOTE:
+                candidate = payload.candidate_strategy_id or canary_before
+                if not candidate:
+                    raise InvalidRolloutDecisionError(
+                        "candidate_strategy_id is required for demote",
+                    )
+                if canary_before and canary_before != candidate:
+                    raise InvalidRolloutDecisionError(
+                        "candidate_strategy_id does not match current canary",
+                    )
+                canary_after = None
+                canary_traffic_after = 0
+
+            if payload.action is RolloutAction.ROLLBACK:
+                canary_after = None
+                canary_traffic_after = 0
+
+            now = utcnow()
+            updated_record = record.model_copy(
+                update={
+                    "stable_strategy_id": stable_after,
+                    "canary_strategy_id": canary_after,
+                    "canary_traffic_percent": canary_traffic_after,
+                    "updated_at": now,
+                }
+            )
+            self._capability_contracts[capability_alias] = updated_record
+
+            decision = RolloutDecisionRecord(
+                decision_id=f"rdec-{uuid4().hex}",
+                capability_alias=capability_alias,
+                action=payload.action,
+                stable_strategy_before=stable_before,
+                canary_strategy_before=canary_before,
+                stable_strategy_after=stable_after,
+                canary_strategy_after=canary_after,
+                canary_traffic_percent_after=canary_traffic_after,
+                baseline_metrics=payload.baseline_metrics,
+                candidate_metrics=payload.candidate_metrics,
+                thresholds=payload.thresholds,
+                actor=payload.actor,
+                rationale=payload.rationale,
+                metadata=payload.metadata,
+                decided_at=now,
+            )
+            self._rollout_decisions[decision.decision_id] = decision
+            self._decisions_by_alias[capability_alias].append(
+                decision.decision_id
+            )
+            return updated_record, decision
+
+    def list_rollout_decisions(
+        self,
+        capability_alias: str,
+    ) -> list[RolloutDecisionRecord]:
+        with self._lock:
+            decision_ids = self._decisions_by_alias.get(capability_alias, [])
+            return [self._rollout_decisions[item] for item in decision_ids]
 
     def create_plan(
         self,

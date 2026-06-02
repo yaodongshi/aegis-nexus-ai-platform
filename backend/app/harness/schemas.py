@@ -29,10 +29,68 @@ class RuntimeEventType(StrEnum):
     ROLLBACK = "rollback"
 
 
+class RolloutAction(StrEnum):
+    CANARY = "canary"
+    PROMOTE = "promote"
+    DEMOTE = "demote"
+    ROLLBACK = "rollback"
+
+
 class PlanCreateRequest(BaseModel):
     capability_alias: str = Field(..., min_length=1, max_length=128)
     strategy_id: str | None = Field(default=None, max_length=128)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class CapabilityAliasContractUpsertRequest(BaseModel):
+    contract_version: str = Field(default="v1", min_length=1, max_length=32)
+    runtime_adapter: str = Field(default="noop", min_length=1, max_length=64)
+    stable_strategy_id: str | None = Field(default=None, max_length=128)
+    canary_strategy_id: str | None = Field(default=None, max_length=128)
+    canary_traffic_percent: int = Field(default=0, ge=0, le=100)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class CapabilityAliasContractRecord(BaseModel):
+    capability_alias: str
+    contract_version: str
+    runtime_adapter: str
+    stable_strategy_id: str | None = None
+    canary_strategy_id: str | None = None
+    canary_traffic_percent: int
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+
+class RolloutDecisionRequest(BaseModel):
+    action: RolloutAction
+    candidate_strategy_id: str | None = Field(default=None, max_length=128)
+    canary_traffic_percent: int | None = Field(default=None, ge=0, le=100)
+    baseline_metrics: dict[str, float] = Field(default_factory=dict)
+    candidate_metrics: dict[str, float] = Field(default_factory=dict)
+    thresholds: dict[str, float] = Field(default_factory=dict)
+    actor: str = Field(default="system", min_length=1, max_length=128)
+    rationale: str | None = Field(default=None, max_length=2048)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RolloutDecisionRecord(BaseModel):
+    decision_id: str
+    capability_alias: str
+    action: RolloutAction
+    stable_strategy_before: str | None = None
+    canary_strategy_before: str | None = None
+    stable_strategy_after: str | None = None
+    canary_strategy_after: str | None = None
+    canary_traffic_percent_after: int
+    baseline_metrics: dict[str, float] = Field(default_factory=dict)
+    candidate_metrics: dict[str, float] = Field(default_factory=dict)
+    thresholds: dict[str, float] = Field(default_factory=dict)
+    actor: str
+    rationale: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    decided_at: datetime
 
 
 class PlanRecord(BaseModel):

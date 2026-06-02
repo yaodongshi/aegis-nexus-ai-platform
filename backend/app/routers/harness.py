@@ -3,13 +3,19 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from ..harness import (
+    CapabilityAliasNotFoundError,
     HarnessPlanLockStore,
     InvalidPlanTransitionError,
+    InvalidRolloutDecisionError,
     RuntimeAdapterRegistry,
 )
 from ..harness.schemas import (
+    CapabilityAliasContractRecord,
+    CapabilityAliasContractUpsertRequest,
     PlanCreateRequest,
     PlanRecord,
+    RolloutDecisionRecord,
+    RolloutDecisionRequest,
     RuntimeEventIngestRequest,
     RuntimeEventIngestResponse,
     RuntimeEventRecord,
@@ -41,16 +47,121 @@ def create_plan(
     store: HarnessPlanLockStore = Depends(get_harness_store),
     runtime_registry: RuntimeAdapterRegistry = Depends(get_runtime_registry),
 ) -> PlanRecord:
-    plan = store.create_plan(payload, trace_id=trace_id)
-    adapter_name = (
-        payload.metadata.get("runtime_adapter")
-        if payload.metadata
-        else None
+    contract = store.get_capability_contract(payload.capability_alias)
+    metadata = dict(payload.metadata)
+    strategy_id = payload.strategy_id
+    adapter_name = metadata.get("runtime_adapter") if metadata else None
+    if contract is not None:
+        if strategy_id is None:
+            strategy_id = contract.stable_strategy_id
+        if not adapter_name:
+            adapter_name = contract.runtime_adapter
+            metadata["runtime_adapter"] = adapter_name
+        metadata["capability_contract_version"] = contract.contract_version
+        metadata["rollout"] = {
+            "stable_strategy_id": contract.stable_strategy_id,
+            "canary_strategy_id": contract.canary_strategy_id,
+            "canary_traffic_percent": contract.canary_traffic_percent,
+        }
+
+    prepared_payload = payload.model_copy(
+        update={
+            "strategy_id": strategy_id,
+            "metadata": metadata,
+        }
     )
+
+    plan = store.create_plan(prepared_payload, trace_id=trace_id)
     adapter = runtime_registry.resolve(adapter_name)
     adapter.validate_plan(plan)
     request.state.trace_id = trace_id
     return plan
+
+
+@router.get(
+    "/capabilities",
+    response_model=list[CapabilityAliasContractRecord],
+)
+def list_capability_contracts(
+    store: HarnessPlanLockStore = Depends(get_harness_store),
+) -> list[CapabilityAliasContractRecord]:
+    return store.list_capability_contracts()
+
+
+@router.put(
+    "/capabilities/{capability_alias}",
+    response_model=CapabilityAliasContractRecord,
+)
+def upsert_capability_contract(
+    capability_alias: str,
+    payload: CapabilityAliasContractUpsertRequest,
+    store: HarnessPlanLockStore = Depends(get_harness_store),
+) -> CapabilityAliasContractRecord:
+    return store.upsert_capability_contract(
+        capability_alias=capability_alias,
+        payload=payload,
+    )
+
+
+@router.get(
+    "/capabilities/{capability_alias}",
+    response_model=CapabilityAliasContractRecord,
+)
+def get_capability_contract(
+    capability_alias: str,
+    store: HarnessPlanLockStore = Depends(get_harness_store),
+) -> CapabilityAliasContractRecord:
+    contract = store.get_capability_contract(capability_alias)
+    if contract is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Capability alias contract not found",
+        )
+    return contract
+
+
+@router.post(
+    "/capabilities/{capability_alias}/rollout-decisions",
+    response_model=RolloutDecisionRecord,
+)
+def create_rollout_decision(
+    capability_alias: str,
+    payload: RolloutDecisionRequest,
+    store: HarnessPlanLockStore = Depends(get_harness_store),
+) -> RolloutDecisionRecord:
+    try:
+        _, decision = store.record_rollout_decision(
+            capability_alias=capability_alias,
+            payload=payload,
+        )
+    except CapabilityAliasNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Capability alias contract not found",
+        ) from exc
+    except InvalidRolloutDecisionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    return decision
+
+
+@router.get(
+    "/capabilities/{capability_alias}/rollout-decisions",
+    response_model=list[RolloutDecisionRecord],
+)
+def list_rollout_decisions(
+    capability_alias: str,
+    store: HarnessPlanLockStore = Depends(get_harness_store),
+) -> list[RolloutDecisionRecord]:
+    contract = store.get_capability_contract(capability_alias)
+    if contract is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Capability alias contract not found",
+        )
+    return store.list_rollout_decisions(capability_alias)
 
 
 @router.get("/plans/{plan_id}", response_model=PlanRecord)

@@ -3,7 +3,7 @@
 - [x] 1.1 Define `harness-runtime` capability spec and validate OpenSpec format.
 - [x] 1.2 Define task plan state machine and invalid transition rules.
 - [x] 1.3 Define runtime event schema (`RuntimeEvent`) and trace propagation fields.
-- [ ] 1.4 Define capability alias contract versioning and rollout metadata.
+- [x] 1.4 Define capability alias contract versioning and rollout metadata.
 
 ## 2. Runtime Foundation
 
@@ -14,10 +14,10 @@
 
 ## 3. Governance and Rollout
 
-- [ ] 3.1 Implement strategy rollout service (`canary`, `promote`, `demote`, `rollback`).
-- [ ] 3.2 Bind rollout policy to capability aliases in control-plane.
+- [x] 3.1 Implement strategy rollout service (`canary`, `promote`, `demote`, `rollback`).
+- [x] 3.2 Bind rollout policy to capability aliases in control-plane.
 - [ ] 3.3 Add approval gate hooks for risky transitions.
-- [ ] 3.4 Add immutable audit records for rollout decisions.
+- [x] 3.4 Add immutable audit records for rollout decisions.
 
 ## 4. Observability and Safety
 
