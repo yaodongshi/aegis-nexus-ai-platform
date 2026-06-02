@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import math
 from threading import Lock
-from uuid import uuid4
 from typing import Any
+from uuid import uuid4
 
 from .schemas import (
     CapabilityAliasContractRecord,
     CapabilityAliasContractUpsertRequest,
+    HarnessAlert,
+    HarnessAlertEvaluationRequest,
+    HarnessAlertEvaluationResponse,
+    HarnessMetricsSnapshot,
     PlanCreateRequest,
     PlanRecord,
     PlanState,
@@ -322,3 +327,162 @@ class HarnessPlanLockStore:
                 plans=[self._plans[plan_id] for plan_id in plan_ids],
                 events=[self._events[event_id] for event_id in event_ids],
             )
+
+    def get_metrics_snapshot(
+        self,
+        capability_alias: str | None = None,
+    ) -> HarnessMetricsSnapshot:
+        with self._lock:
+            plans = [
+                plan
+                for plan in self._plans.values()
+                if capability_alias is None
+                or plan.capability_alias == capability_alias
+            ]
+            plan_ids = {plan.plan_id for plan in plans}
+            events = [
+                event
+                for event in self._events.values()
+                if event.plan_id in plan_ids
+            ]
+
+        terminal_states = {
+            PlanState.COMPLETED,
+            PlanState.FAILED,
+            PlanState.ROLLED_BACK,
+        }
+        terminal_total = sum(
+            1 for plan in plans if plan.state in terminal_states
+        )
+        completed_total = sum(
+            1 for plan in plans if plan.state is PlanState.COMPLETED
+        )
+        failed_total = sum(
+            1 for plan in plans if plan.state is PlanState.FAILED
+        )
+        rolled_back_total = sum(
+            1 for plan in plans if plan.state is PlanState.ROLLED_BACK
+        )
+
+        success_rate = (
+            completed_total / terminal_total if terminal_total > 0 else 0.0
+        )
+        rollback_rate = (
+            rolled_back_total / terminal_total if terminal_total > 0 else 0.0
+        )
+
+        latency_values = [
+            value
+            for value in (
+                self._as_float(event.payload.get("latency_ms"))
+                for event in events
+            )
+            if value is not None
+        ]
+        avg_latency_ms = (
+            sum(latency_values) / len(latency_values)
+            if latency_values
+            else None
+        )
+        p95_latency_ms = (
+            self._percentile(latency_values, 0.95)
+            if latency_values
+            else None
+        )
+
+        total_cost_usd = sum(
+            value
+            for value in (
+                self._as_float(event.payload.get("cost_usd"))
+                for event in events
+            )
+            if value is not None
+        )
+
+        return HarnessMetricsSnapshot(
+            capability_alias=capability_alias,
+            generated_at=utcnow(),
+            plan_total=len(plans),
+            terminal_total=terminal_total,
+            completed_total=completed_total,
+            failed_total=failed_total,
+            rolled_back_total=rolled_back_total,
+            success_rate=success_rate,
+            rollback_rate=rollback_rate,
+            avg_latency_ms=avg_latency_ms,
+            p95_latency_ms=p95_latency_ms,
+            total_cost_usd=total_cost_usd,
+        )
+
+    def evaluate_alerts(
+        self,
+        payload: HarnessAlertEvaluationRequest,
+    ) -> HarnessAlertEvaluationResponse:
+        metrics = self.get_metrics_snapshot(payload.capability_alias)
+        thresholds = payload.thresholds
+        alerts: list[HarnessAlert] = []
+
+        if metrics.success_rate < thresholds.min_success_rate:
+            alerts.append(
+                HarnessAlert(
+                    code="low_success_rate",
+                    level="critical",
+                    metric_value=metrics.success_rate,
+                    threshold_value=thresholds.min_success_rate,
+                    message="Success rate dropped below threshold",
+                )
+            )
+
+        if (
+            metrics.avg_latency_ms is not None
+            and metrics.avg_latency_ms > thresholds.max_avg_latency_ms
+        ):
+            alerts.append(
+                HarnessAlert(
+                    code="high_avg_latency",
+                    level="warning",
+                    metric_value=metrics.avg_latency_ms,
+                    threshold_value=thresholds.max_avg_latency_ms,
+                    message="Average latency exceeds threshold",
+                )
+            )
+
+        if metrics.total_cost_usd > thresholds.max_total_cost_usd:
+            alerts.append(
+                HarnessAlert(
+                    code="high_total_cost",
+                    level="warning",
+                    metric_value=metrics.total_cost_usd,
+                    threshold_value=thresholds.max_total_cost_usd,
+                    message="Accumulated cost exceeds threshold",
+                )
+            )
+
+        if metrics.rollback_rate > thresholds.max_rollback_rate:
+            alerts.append(
+                HarnessAlert(
+                    code="high_rollback_rate",
+                    level="critical",
+                    metric_value=metrics.rollback_rate,
+                    threshold_value=thresholds.max_rollback_rate,
+                    message="Rollback rate exceeds threshold",
+                )
+            )
+
+        return HarnessAlertEvaluationResponse(
+            status="triggered" if alerts else "ok",
+            metrics=metrics,
+            alerts=alerts,
+        )
+
+    @staticmethod
+    def _as_float(value: Any) -> float | None:
+        if isinstance(value, (int, float)):
+            return float(value)
+        return None
+
+    @staticmethod
+    def _percentile(values: list[float], q: float) -> float:
+        ordered = sorted(values)
+        index = max(0, math.ceil(q * len(ordered)) - 1)
+        return ordered[index]

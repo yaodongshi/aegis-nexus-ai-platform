@@ -5,6 +5,84 @@ from fastapi.testclient import TestClient
 from backend.app.main import app
 
 
+def _create_plan(
+    client: TestClient,
+    capability_alias: str,
+    trace_id: str,
+) -> str:
+    create_plan_resp = client.post(
+        "/api/v1/harness/plans",
+        headers={"X-Trace-Id": trace_id},
+        json={
+            "capability_alias": capability_alias,
+        },
+    )
+    assert create_plan_resp.status_code == 200, create_plan_resp.text
+    return create_plan_resp.json()["plan_id"]
+
+
+def _ingest_event(
+    client: TestClient,
+    plan_id: str,
+    trace_id: str,
+    event_type: str,
+    payload: dict | None = None,
+) -> None:
+    event_resp = client.post(
+        f"/api/v1/harness/plans/{plan_id}/events",
+        headers={"X-Trace-Id": trace_id},
+        json={
+            "event_type": event_type,
+            "source": "test-runner",
+            "payload": payload or {},
+        },
+    )
+    assert event_resp.status_code == 200, event_resp.text
+
+
+def _prepare_metrics_fixture(
+    client: TestClient,
+    capability_alias: str,
+) -> None:
+    upsert_resp = client.put(
+        f"/api/v1/harness/capabilities/{capability_alias}",
+        json={
+            "contract_version": "v1",
+            "runtime_adapter": "noop",
+            "stable_strategy_id": "strategy-metrics-v1",
+            "canary_traffic_percent": 0,
+        },
+    )
+    assert upsert_resp.status_code == 200, upsert_resp.text
+
+    success_trace = f"trace-{capability_alias}-ok"
+    success_plan_id = _create_plan(client, capability_alias, success_trace)
+    _ingest_event(client, success_plan_id, success_trace, "validate")
+    _ingest_event(client, success_plan_id, success_trace, "prepare")
+    _ingest_event(client, success_plan_id, success_trace, "start")
+    _ingest_event(
+        client,
+        success_plan_id,
+        success_trace,
+        "complete",
+        {"latency_ms": 120.0, "cost_usd": 0.12},
+    )
+
+    rollback_trace = f"trace-{capability_alias}-rb"
+    rollback_plan_id = _create_plan(client, capability_alias, rollback_trace)
+    _ingest_event(client, rollback_plan_id, rollback_trace, "validate")
+    _ingest_event(client, rollback_plan_id, rollback_trace, "prepare")
+    _ingest_event(client, rollback_plan_id, rollback_trace, "start")
+    _ingest_event(
+        client,
+        rollback_plan_id,
+        rollback_trace,
+        "fail",
+        {"latency_ms": 240.0, "cost_usd": 0.45},
+    )
+    _ingest_event(client, rollback_plan_id, rollback_trace, "rollback")
+
+
 def test_plan_inherits_capability_contract(monkeypatch) -> None:
     monkeypatch.delenv("TEAM_AI_PLATFORM_ADMIN_TOKEN", raising=False)
     monkeypatch.delenv("TEAM_AI_PLATFORM_DB_DSN", raising=False)
@@ -247,3 +325,58 @@ def test_rollout_requires_approval_and_accepts_approved_gate(
         decision = allowed_resp.json()
         assert decision["approval_id"] == approval_id
         assert decision["approval_status"] == "approved"
+
+
+def test_harness_metrics_snapshot(monkeypatch) -> None:
+    monkeypatch.delenv("TEAM_AI_PLATFORM_ADMIN_TOKEN", raising=False)
+    monkeypatch.delenv("TEAM_AI_PLATFORM_DB_DSN", raising=False)
+
+    with TestClient(app) as client:
+        capability_alias = "metrics-default"
+        _prepare_metrics_fixture(client, capability_alias)
+
+        metrics_resp = client.get(
+            "/api/v1/harness/metrics",
+            params={"capability_alias": capability_alias},
+        )
+        assert metrics_resp.status_code == 200, metrics_resp.text
+        metrics = metrics_resp.json()
+        assert metrics["plan_total"] == 2
+        assert metrics["terminal_total"] == 2
+        assert metrics["completed_total"] == 1
+        assert metrics["rolled_back_total"] == 1
+        assert metrics["success_rate"] == 0.5
+        assert metrics["rollback_rate"] == 0.5
+        assert metrics["avg_latency_ms"] == 180.0
+        assert metrics["p95_latency_ms"] == 240.0
+        assert abs(metrics["total_cost_usd"] - 0.57) < 1e-9
+
+
+def test_harness_alert_evaluation(monkeypatch) -> None:
+    monkeypatch.delenv("TEAM_AI_PLATFORM_ADMIN_TOKEN", raising=False)
+    monkeypatch.delenv("TEAM_AI_PLATFORM_DB_DSN", raising=False)
+
+    with TestClient(app) as client:
+        capability_alias = "alert-default"
+        _prepare_metrics_fixture(client, capability_alias)
+
+        alert_resp = client.post(
+            "/api/v1/harness/alerts/evaluate",
+            json={
+                "capability_alias": capability_alias,
+                "thresholds": {
+                    "min_success_rate": 0.8,
+                    "max_avg_latency_ms": 150.0,
+                    "max_total_cost_usd": 0.5,
+                    "max_rollback_rate": 0.2,
+                },
+            },
+        )
+        assert alert_resp.status_code == 200, alert_resp.text
+        payload = alert_resp.json()
+        assert payload["status"] == "triggered"
+        alert_codes = {item["code"] for item in payload["alerts"]}
+        assert "low_success_rate" in alert_codes
+        assert "high_avg_latency" in alert_codes
+        assert "high_total_cost" in alert_codes
+        assert "high_rollback_rate" in alert_codes

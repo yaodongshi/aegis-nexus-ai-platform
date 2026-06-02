@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..harness import (
     CapabilityAliasNotFoundError,
@@ -10,6 +10,9 @@ from ..harness import (
     RuntimeAdapterRegistry,
 )
 from ..harness.schemas import (
+    HarnessAlertEvaluationRequest,
+    HarnessAlertEvaluationResponse,
+    HarnessMetricsSnapshot,
     CapabilityAliasContractRecord,
     CapabilityAliasContractUpsertRequest,
     PlanCreateRequest,
@@ -91,6 +94,25 @@ def list_capability_contracts(
     store: HarnessPlanLockStore = Depends(get_harness_store),
 ) -> list[CapabilityAliasContractRecord]:
     return store.list_capability_contracts()
+
+
+@router.get("/metrics", response_model=HarnessMetricsSnapshot)
+def get_harness_metrics(
+    capability_alias: str | None = Query(default=None, max_length=128),
+    store: HarnessPlanLockStore = Depends(get_harness_store),
+) -> HarnessMetricsSnapshot:
+    return store.get_metrics_snapshot(capability_alias)
+
+
+@router.post(
+    "/alerts/evaluate",
+    response_model=HarnessAlertEvaluationResponse,
+)
+def evaluate_harness_alerts(
+    payload: HarnessAlertEvaluationRequest,
+    store: HarnessPlanLockStore = Depends(get_harness_store),
+) -> HarnessAlertEvaluationResponse:
+    return store.evaluate_alerts(payload)
 
 
 @router.put(

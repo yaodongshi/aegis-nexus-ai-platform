@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -132,6 +132,49 @@ class TraceEventsResponse(BaseModel):
     trace_id: str
     plans: list[PlanRecord]
     events: list[RuntimeEventRecord]
+
+
+class HarnessMetricsSnapshot(BaseModel):
+    capability_alias: str | None = None
+    generated_at: datetime
+    plan_total: int = 0
+    terminal_total: int = 0
+    completed_total: int = 0
+    failed_total: int = 0
+    rolled_back_total: int = 0
+    success_rate: float = 0.0
+    rollback_rate: float = 0.0
+    avg_latency_ms: float | None = None
+    p95_latency_ms: float | None = None
+    total_cost_usd: float = 0.0
+
+
+class HarnessAlertThresholds(BaseModel):
+    min_success_rate: float = Field(default=0.95, ge=0.0, le=1.0)
+    max_avg_latency_ms: float = Field(default=1500.0, ge=0.0)
+    max_total_cost_usd: float = Field(default=200.0, ge=0.0)
+    max_rollback_rate: float = Field(default=0.05, ge=0.0, le=1.0)
+
+
+class HarnessAlert(BaseModel):
+    code: str
+    level: Literal["warning", "critical"]
+    metric_value: float
+    threshold_value: float
+    message: str
+
+
+class HarnessAlertEvaluationRequest(BaseModel):
+    capability_alias: str | None = Field(default=None, max_length=128)
+    thresholds: HarnessAlertThresholds = Field(
+        default_factory=HarnessAlertThresholds,
+    )
+
+
+class HarnessAlertEvaluationResponse(BaseModel):
+    status: Literal["ok", "triggered"]
+    metrics: HarnessMetricsSnapshot
+    alerts: list[HarnessAlert] = Field(default_factory=list)
 
 
 def new_trace_id() -> str:

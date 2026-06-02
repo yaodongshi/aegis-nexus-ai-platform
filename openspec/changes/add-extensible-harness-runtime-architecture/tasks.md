@@ -22,8 +22,8 @@
 ## 4. Observability and Safety
 
 - [x] 4.1 Standardize `trace_id` generation and propagation across frontend/backend/gateway.
-- [ ] 4.2 Add dashboard metrics for success rate, latency, cost, rollback rate.
-- [ ] 4.3 Add alerting rules for regression thresholds.
+- [x] 4.2 Add dashboard metrics for success rate, latency, cost, rollback rate.
+- [x] 4.3 Add alerting rules for regression thresholds.
 - [ ] 4.4 Add replay tooling for failed plan investigation.
 
 ## 5. Open-Source Integration Path
