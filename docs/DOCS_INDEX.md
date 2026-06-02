@@ -1,9 +1,13 @@
 # Team AI Platform 文档索引（对齐版）
 
-更新日期：2026-05-19  
+更新日期：2026-06-02  
 适用架构：LiteLLM + Qdrant（Skill / Agent / MCP / RAG 闭环）
 
 ## 1. 主文档（优先阅读）
+
+- DELIVERY_SUMMARY_2026-06-02.md
+  - 当前交付单一入口
+  - 验收、测试、最小校验与接入文档聚合索引
 
 - AI_DEVHUB_LITELLM_QDRANT_MASTER_PLAN.md
   - 产品、架构、业务一体化主方案
@@ -36,6 +40,7 @@
 ## 3. 归档文档（历史参考，不作为当前执行基线）
 
 归档目录：archive/2026-05-19/
+补充归档目录：archive/2026-06-02-delivery-superseded/
 
 已归档（原因：阶段性总结、历史选型、重复叙述）：
 
@@ -51,6 +56,9 @@
 - ../../docs/archive/2026-05-19/PHASE_0_WEEK1_QUICKSTART.md
 - ../../docs/archive/2026-05-19/PHASE_1_5_SUMMARY.md
 - ../../docs/archive/2026-05-19/STATUS_READY_TO_DEPLOY.md
+- ../../docs/archive/2026-06-02-delivery-superseded/PLATFORM_HEALTH_CHECKLIST.md
+- ../../docs/archive/2026-06-02-delivery-superseded/PLATFORM_MANUAL.md
+- ../../docs/archive/2026-06-02-delivery-superseded/PLATFORM_USER_GUIDE.md
 
 ## 4. 文档治理规则
 
