@@ -11,6 +11,10 @@
   - 分阶段任务、验收、风险与 DoD
 - MASTER_OPERATIONS_AND_HANDOFF_2026-06-02.md
   - 部署、提测、验收、用户接入统一入口
+- USER_MANUAL.md
+  - 统一用户手册（后续持续迭代）
+- BUSINESS_ARCH_TECH_ROUTE_MATRIX_TOPOLOGY.md
+  - 业务架构、技术路线、矩阵与拓扑统一文档
 - HARNESS_OPEN_SOURCE_IMPLEMENTATION_BLUEPRINT_2026-06-02.md
   - 开源 Harness 取材路径与本仓落地蓝图
 - HARNESS_RUNTIME_MIGRATION_RUNBOOK_2026-06-02.md
@@ -20,21 +24,10 @@
 
 ## 2. 保留的专题文档（仍有效）
 
-- AI_DEVHUB_LITELLM_QDRANT_MASTER_PLAN.md
-- API_AND_FEATURE_CLEANUP_MATRIX.md
-- COMPATIBILITY_MODULE_DECOMMISSION_TIMELINE.md
-- FRONTEND_RAG_SKILL_SEPARATION.md
-- LIGHTWEIGHT_RAG_DESIGN.md
-- RAG_DATA_IMPORT_STRATEGY.md
-- MCP_SKILL_RAG_AGENT_EVOLUTION_PROTOCOL.md
-- V2_CONTROL_PLANE_API_CONTRACT.md
-- V2_DATA_MODEL_AND_MIGRATION_PLAN.md
-- VIRTUAL_KEY_CLI_IMPLEMENTATION_SPEC.md
 - HARNESS_OPEN_SOURCE_ASSESSMENT_2026-06-02.md
-- DESIGN.md
-- EXECUTION.md
+- HARNESS_OPEN_SOURCE_LICENSE_COMPLIANCE_CHECKLIST_2026-06-02.md
 
-## 3. 新增归档目录（已合并替代）
+## 3. 归档目录（历史文档）
 
 - archive/2026-06-02-merged/
   - ARCHITECTURE_GAP_ANALYSIS_2026-05-20.md
@@ -53,12 +46,18 @@
   - user-guide.md
   - user-guide-v2.md
 
-## 4. 历史归档目录
+## 4. 清理说明（本轮）
+
+- 已删除主目录历史专题文档 12 份，保留可追溯历史于 `docs/archive/*`。
+- 用户手册统一收敛到 `USER_MANUAL.md`，后续不再新增平行 user-guide。
+- 业务架构与技术路线统一收敛到 `BUSINESS_ARCH_TECH_ROUTE_MATRIX_TOPOLOGY.md`。
+
+## 5. 历史归档目录
 
 - archive/2026-05-19/
 - archive/2026-06-02-delivery-superseded/
 
-## 5. 文档治理规则
+## 6. 文档治理规则
 
 - 主目录只保留当前执行基线与高价值专题文档。
 - 同主题新增文档优先合并到已有主文档，避免平行文档扩散。
