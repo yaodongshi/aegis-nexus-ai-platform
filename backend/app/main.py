@@ -7,6 +7,7 @@ from fastapi.responses import Response
 
 
 from .core.config import get_settings
+from .harness.trace_bridge import ensure_trace_id
 from .routers import (
     approvals,
     control_plane_v2,
@@ -64,7 +65,16 @@ COMPAT_API_PREFIXES = (
 
 @app.middleware("http")
 async def add_compat_deprecation_headers(request: Request, call_next):
+    incoming_trace_id = request.headers.get("X-Trace-Id")
+    if not incoming_trace_id and request.url.path.startswith(
+        "/api/v1/harness/traces/"
+    ):
+        incoming_trace_id = request.url.path.rsplit("/", 1)[-1]
+    ensure_trace_id(request, incoming_trace_id)
     response: Response = await call_next(request)
+    trace_id = getattr(request.state, "trace_id", "")
+    if trace_id:
+        response.headers["X-Trace-Id"] = trace_id
     path = request.url.path
     if any(path.startswith(prefix) for prefix in COMPAT_API_PREFIXES):
         response.headers["Deprecation"] = "true"

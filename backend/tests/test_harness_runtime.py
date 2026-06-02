@@ -39,6 +39,42 @@ def test_plan_inherits_capability_contract(monkeypatch) -> None:
         )
 
 
+def test_trace_id_is_preserved_on_harness_requests(monkeypatch) -> None:
+    monkeypatch.delenv("TEAM_AI_PLATFORM_ADMIN_TOKEN", raising=False)
+    monkeypatch.delenv("TEAM_AI_PLATFORM_DB_DSN", raising=False)
+
+    with TestClient(app) as client:
+        trace_id = "trace-unit-test-001"
+        upsert_resp = client.put(
+            "/api/v1/harness/capabilities/trace-default",
+            headers={"X-Trace-Id": trace_id},
+            json={
+                "contract_version": "v1",
+                "runtime_adapter": "noop",
+                "stable_strategy_id": "strategy-trace-v1",
+                "canary_traffic_percent": 0,
+            },
+        )
+        assert upsert_resp.status_code == 200, upsert_resp.text
+
+        create_plan_resp = client.post(
+            "/api/v1/harness/plans",
+            headers={"X-Trace-Id": trace_id},
+            json={
+                "capability_alias": "trace-default",
+            },
+        )
+        assert create_plan_resp.status_code == 200, create_plan_resp.text
+        assert create_plan_resp.headers["X-Trace-Id"] == trace_id
+
+        created = create_plan_resp.json()
+        trace_resp = client.get(f"/api/v1/harness/traces/{trace_id}")
+        assert trace_resp.status_code == 200, trace_resp.text
+        assert trace_resp.headers["X-Trace-Id"] == trace_id
+        assert trace_resp.json()["trace_id"] == trace_id
+        assert trace_resp.json()["plans"][0]["plan_id"] == created["plan_id"]
+
+
 def test_rollout_decision_canary_then_promote(monkeypatch) -> None:
     monkeypatch.delenv("TEAM_AI_PLATFORM_ADMIN_TOKEN", raising=False)
     monkeypatch.delenv("TEAM_AI_PLATFORM_DB_DSN", raising=False)
