@@ -8,8 +8,8 @@ __pycache__/
 backend/.aegis_e2e_repo/
 litellm/runtime_sync_audit.jsonl
 
-# Do not submit local OpenSpec working files
-openspec/
+# Track OpenSpec changes for spec-driven delivery
+openspec/changes/archive/
 
 # Ignore temporary/local shell experiments (keep named scripts tracked)
 scripts/tmp_*.sh

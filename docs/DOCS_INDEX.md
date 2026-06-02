@@ -1,69 +1,62 @@
-# Team AI Platform 文档索引（对齐版）
+# Team AI Platform 文档索引（合并版）
 
 更新日期：2026-06-02  
-适用架构：LiteLLM + Qdrant（Skill / Agent / MCP / RAG 闭环）
+适用架构：LiteLLM + Qdrant + 可插拔 Harness Runtime
 
-## 1. 主文档（优先阅读）
+## 1. 当前执行基线（优先阅读）
 
-- DELIVERY_SUMMARY_2026-06-02.md
-  - 当前交付单一入口
-  - 验收、测试、最小校验与接入文档聚合索引
+- MASTER_ARCHITECTURE_ANALYSIS_AND_TARGET_2026-06-02.md
+  - 架构现状、边界、目标架构与演进路线
+- MASTER_EXECUTION_PLAN_2026-06-02.md
+  - 分阶段任务、验收、风险与 DoD
+- MASTER_OPERATIONS_AND_HANDOFF_2026-06-02.md
+  - 部署、提测、验收、用户接入统一入口
+- HARNESS_OPEN_SOURCE_IMPLEMENTATION_BLUEPRINT_2026-06-02.md
+  - 开源 Harness 取材路径与本仓落地蓝图
+
+## 2. 保留的专题文档（仍有效）
 
 - AI_DEVHUB_LITELLM_QDRANT_MASTER_PLAN.md
-  - 产品、架构、业务一体化主方案
-  - 目标、能力边界、路线图、验收标准
 - API_AND_FEATURE_CLEANUP_MATRIX.md
-  - 功能与 API 收敛/过渡/下线矩阵
-  - 前后端清理节奏与验收标准
 - COMPATIBILITY_MODULE_DECOMMISSION_TIMELINE.md
-  - 兼容模块分阶段下线时间表
-  - Phase A/B/C 执行与验收窗口
-- MCP_SKILL_RAG_AGENT_EVOLUTION_PROTOCOL.md
-  - MCP-Skill-RAG-Agent 循环进化执行协议
-  - 会话/CLI 知识入 RAG 与团队同步规则
-
-## 2. 活跃设计文档（当前仍有效）
-
-- DESIGN.md
-- EXECUTION.md
-- ITERATION_PLAN.md
 - FRONTEND_RAG_SKILL_SEPARATION.md
 - LIGHTWEIGHT_RAG_DESIGN.md
 - RAG_DATA_IMPORT_STRATEGY.md
-- LITELLM_RAG_VECTOR_STORE_RUNBOOK.md
+- MCP_SKILL_RAG_AGENT_EVOLUTION_PROTOCOL.md
 - V2_CONTROL_PLANE_API_CONTRACT.md
 - V2_DATA_MODEL_AND_MIGRATION_PLAN.md
 - VIRTUAL_KEY_CLI_IMPLEMENTATION_SPEC.md
-- user-guide.md
-- user-guide-v2.md
+- HARNESS_OPEN_SOURCE_ASSESSMENT_2026-06-02.md
+- DESIGN.md
+- EXECUTION.md
 
-## 3. 归档文档（历史参考，不作为当前执行基线）
+## 3. 新增归档目录（已合并替代）
 
-归档目录：archive/2026-05-19/
-补充归档目录：archive/2026-06-02-delivery-superseded/
+- archive/2026-06-02-merged/
+  - ARCHITECTURE_GAP_ANALYSIS_2026-05-20.md
+  - ARCHITECTURE_TECH_ROUTE_UPGRADE_2026-05-20.md
+  - PRODUCTIZATION_REMEDIATION_PLAN_7_ISSUES_2026-05-20.md
+  - SELF_EVOLVING_CONTROL_PLANE_REUSE_STRATEGY_2026-05-20.md
+  - LITELLM_CAPABILITY_BOUNDARY_REPORT_2026-05-20.md
+  - ITERATION_PLAN.md
+  - CRAZY_ITERATION_EXECUTION_PLAN_2026-05-20.md
+  - P0_EXECUTION_TASKLIST_2026-05-23.md
+  - DELIVERY_SUMMARY_2026-06-02.md
+  - LITELLM_GATEWAY_INTEGRATION_GUIDE.md
+  - LITELLM_RAG_VECTOR_STORE_RUNBOOK.md
+  - TEST_HANDOFF_2026-06-02.md
+  - FINAL_ACCEPTANCE_NOTICE_2026-06-02.md
+  - user-guide.md
+  - user-guide-v2.md
 
-已归档（原因：阶段性总结、历史选型、重复叙述）：
+## 4. 历史归档目录
 
-- COMPLETE_ITERATION_GUIDE.md
-- COMPLETE_SELF_EVOLUTION_SYSTEM_DESIGN.md
-- GATEWAY_ALTERNATIVES_RESEARCH_20260514.md
-- IMPLEMENTATION_ROADMAP.md
-- SOLUTION_A_COMPLETE_DESIGN.md
-- ../../docs/archive/2026-05-19/DASHBOARD_ANALYSIS_SUMMARY.md
-- ../../docs/archive/2026-05-19/EXECUTION_REPORT_2026_05_19.md
-- ../../docs/archive/2026-05-19/PHASE_0_EXECUTION_AUTHORIZATION.md
-- ../../docs/archive/2026-05-19/PHASE_0_WEEK1_EXECUTION_REPORT.md
-- ../../docs/archive/2026-05-19/PHASE_0_WEEK1_QUICKSTART.md
-- ../../docs/archive/2026-05-19/PHASE_1_5_SUMMARY.md
-- ../../docs/archive/2026-05-19/STATUS_READY_TO_DEPLOY.md
-- ../../docs/archive/2026-06-02-delivery-superseded/PLATFORM_HEALTH_CHECKLIST.md
-- ../../docs/archive/2026-06-02-delivery-superseded/PLATFORM_MANUAL.md
-- ../../docs/archive/2026-06-02-delivery-superseded/PLATFORM_USER_GUIDE.md
+- archive/2026-05-19/
+- archive/2026-06-02-delivery-superseded/
 
-## 4. 文档治理规则
+## 5. 文档治理规则
 
-- 新增架构级文档必须先在主方案中登记。
-- 新增接口文档必须与 API 合同文档同步。
-- 阶段性报告默认进入 archive，不进入主目录。
-- 主目录只保留“当前可执行”文档。
-- 向量库相关操作必须同时提供：配置样例、可执行脚本、闭环验证步骤。
+- 主目录只保留当前执行基线与高价值专题文档。
+- 同主题新增文档优先合并到已有主文档，避免平行文档扩散。
+- 阶段性报告与临时执行单默认归档。
+- 所有架构与执行变更必须同步 OpenSpec 变更与任务清单。
