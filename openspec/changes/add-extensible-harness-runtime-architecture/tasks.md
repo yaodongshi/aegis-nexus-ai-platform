@@ -16,7 +16,7 @@
 
 - [x] 3.1 Implement strategy rollout service (`canary`, `promote`, `demote`, `rollback`).
 - [x] 3.2 Bind rollout policy to capability aliases in control-plane.
-- [ ] 3.3 Add approval gate hooks for risky transitions.
+- [x] 3.3 Add approval gate hooks for risky transitions.
 - [x] 3.4 Add immutable audit records for rollout decisions.
 
 ## 4. Observability and Safety

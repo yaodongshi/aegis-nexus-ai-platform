@@ -67,6 +67,7 @@ class RolloutDecisionRequest(BaseModel):
     action: RolloutAction
     candidate_strategy_id: str | None = Field(default=None, max_length=128)
     canary_traffic_percent: int | None = Field(default=None, ge=0, le=100)
+    approval_id: str | None = Field(default=None, max_length=128)
     baseline_metrics: dict[str, float] = Field(default_factory=dict)
     candidate_metrics: dict[str, float] = Field(default_factory=dict)
     thresholds: dict[str, float] = Field(default_factory=dict)
@@ -79,6 +80,8 @@ class RolloutDecisionRecord(BaseModel):
     decision_id: str
     capability_alias: str
     action: RolloutAction
+    approval_id: str | None = None
+    approval_status: str | None = None
     stable_strategy_before: str | None = None
     canary_strategy_before: str | None = None
     stable_strategy_after: str | None = None

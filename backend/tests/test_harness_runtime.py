@@ -134,3 +134,80 @@ def test_rollout_promote_without_candidate_conflicts(monkeypatch) -> None:
             },
         )
         assert promote_resp.status_code == 409
+
+
+def test_rollout_requires_approval_and_accepts_approved_gate(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("TEAM_AI_PLATFORM_ADMIN_TOKEN", raising=False)
+    monkeypatch.delenv("TEAM_AI_PLATFORM_DB_DSN", raising=False)
+
+    with TestClient(app) as client:
+        upsert_resp = client.put(
+            "/api/v1/harness/capabilities/chat-default",
+            json={
+                "contract_version": "v1",
+                "runtime_adapter": "noop",
+                "stable_strategy_id": "strategy-chat-v1",
+                "canary_traffic_percent": 0,
+                "metadata": {
+                    "requires_approval": True,
+                },
+            },
+        )
+        assert upsert_resp.status_code == 200, upsert_resp.text
+
+        blocked_resp = client.post(
+            "/api/v1/harness/capabilities/chat-default/rollout-decisions",
+            json={
+                "action": "promote",
+                "actor": "operator-a",
+                "rationale": "needs approval",
+            },
+        )
+        assert blocked_resp.status_code == 403
+
+        approval_resp = client.post(
+            "/api/approvals/submit",
+            json={
+                "applicant_id": "operator-a",
+                "action": "harness.rollout.promote",
+                "resource_id": "chat-default",
+                "reason": "high-risk promotion",
+            },
+        )
+        assert approval_resp.status_code == 201, approval_resp.text
+        approval_id = approval_resp.json()["id"]
+
+        still_blocked_resp = client.post(
+            "/api/v1/harness/capabilities/chat-default/rollout-decisions",
+            json={
+                "action": "promote",
+                "candidate_strategy_id": "strategy-chat-v2",
+                "approval_id": approval_id,
+                "actor": "operator-a",
+                "rationale": "pending approval",
+            },
+        )
+        assert still_blocked_resp.status_code == 403
+
+        approve_resp = client.post(
+            f"/api/approvals/{approval_id}/approve",
+            json={"approver_id": "admin", "reason": "approved for rollout"},
+        )
+        assert approve_resp.status_code == 200, approve_resp.text
+
+        allowed_resp = client.post(
+            "/api/v1/harness/capabilities/chat-default/rollout-decisions",
+            json={
+                "action": "promote",
+                "candidate_strategy_id": "strategy-chat-v2",
+                "approval_id": approval_id,
+                "actor": "operator-a",
+                "rationale": "approved rollout",
+            },
+        )
+        assert allowed_resp.status_code == 200, allowed_resp.text
+        decision = allowed_resp.json()
+        assert decision["approval_id"] == approval_id
+        assert decision["approval_status"] == "approved"

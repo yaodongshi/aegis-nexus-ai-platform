@@ -21,6 +21,7 @@ from ..harness.schemas import (
     RuntimeEventRecord,
     TraceEventsResponse,
 )
+from ..store import PlatformStore
 from ..harness.trace_bridge import resolve_trace_id
 from .dependencies import require_admin_token
 
@@ -37,6 +38,10 @@ def get_harness_store(request: Request) -> HarnessPlanLockStore:
 
 def get_runtime_registry(request: Request) -> RuntimeAdapterRegistry:
     return request.app.state.runtime_registry
+
+
+def get_platform_store(request: Request) -> PlatformStore:
+    return request.app.state.store
 
 
 @router.post("/plans", response_model=PlanRecord)
@@ -127,12 +132,49 @@ def get_capability_contract(
 def create_rollout_decision(
     capability_alias: str,
     payload: RolloutDecisionRequest,
+    request: Request,
     store: HarnessPlanLockStore = Depends(get_harness_store),
+    platform_store: PlatformStore = Depends(get_platform_store),
 ) -> RolloutDecisionRecord:
+    contract = store.get_capability_contract(capability_alias)
+    if contract is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Capability alias contract not found",
+        )
+
+    if store.requires_approval(contract.metadata, payload.action):
+        approval_id = (payload.approval_id or "").strip()
+        if not approval_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Approval required for this rollout transition",
+            )
+
+        approval = platform_store.get_approval(approval_id)
+        if approval is None or approval.resource_id != capability_alias:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Approval not ready for this capability alias",
+            )
+        if approval.status != "approved":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Approval must be approved before rollout",
+            )
+    else:
+        approval_id = (payload.approval_id or "").strip()
+        approval = (
+            platform_store.get_approval(approval_id) if approval_id else None
+        )
+
     try:
         _, decision = store.record_rollout_decision(
             capability_alias=capability_alias,
             payload=payload,
+            approval_status=(
+                approval.status if approval is not None else None
+            ),
         )
     except CapabilityAliasNotFoundError as exc:
         raise HTTPException(

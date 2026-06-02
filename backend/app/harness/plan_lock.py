@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from threading import Lock
 from uuid import uuid4
+from typing import Any
 
 from .schemas import (
     CapabilityAliasContractRecord,
@@ -65,6 +66,14 @@ class InvalidRolloutDecisionError(ValueError):
     pass
 
 
+class ApprovalGateRequiredError(PermissionError):
+    pass
+
+
+class ApprovalNotReadyError(PermissionError):
+    pass
+
+
 class HarnessPlanLockStore:
     def __init__(self) -> None:
         self._lock = Lock()
@@ -118,6 +127,7 @@ class HarnessPlanLockStore:
         self,
         capability_alias: str,
         payload: RolloutDecisionRequest,
+        approval_status: str | None = None,
     ) -> tuple[CapabilityAliasContractRecord, RolloutDecisionRecord]:
         with self._lock:
             record = self._capability_contracts.get(capability_alias)
@@ -184,6 +194,8 @@ class HarnessPlanLockStore:
                 decision_id=f"rdec-{uuid4().hex}",
                 capability_alias=capability_alias,
                 action=payload.action,
+                approval_id=payload.approval_id,
+                approval_status=approval_status,
                 stable_strategy_before=stable_before,
                 canary_strategy_before=canary_before,
                 stable_strategy_after=stable_after,
@@ -202,6 +214,26 @@ class HarnessPlanLockStore:
                 decision.decision_id
             )
             return updated_record, decision
+
+    @staticmethod
+    def requires_approval(
+        contract_metadata: dict[str, Any],
+        action: RolloutAction,
+    ) -> bool:
+        required_actions = contract_metadata.get("approval_required_actions")
+        if isinstance(required_actions, list) and (
+            action.value in required_actions
+        ):
+            return True
+
+        if contract_metadata.get("requires_approval") is True:
+            return action in {RolloutAction.PROMOTE, RolloutAction.ROLLBACK}
+
+        risk_level = str(contract_metadata.get("risk_level") or "").lower()
+        if risk_level in {"p0", "p1", "high"}:
+            return action in {RolloutAction.PROMOTE, RolloutAction.ROLLBACK}
+
+        return False
 
     def list_rollout_decisions(
         self,
