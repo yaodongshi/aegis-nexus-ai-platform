@@ -13,6 +13,10 @@
   - 部署、提测、验收、用户接入统一入口
 - HARNESS_OPEN_SOURCE_IMPLEMENTATION_BLUEPRINT_2026-06-02.md
   - 开源 Harness 取材路径与本仓落地蓝图
+- HARNESS_RUNTIME_MIGRATION_RUNBOOK_2026-06-02.md
+  - Harness Runtime 迁移步骤、发布检查与回滚演练入口
+- HARNESS_FINAL_ACCEPTANCE_REVIEW_2026-06-02.md
+  - Harness Runtime 最终验收评审结论（架构/产品）
 
 ## 2. 保留的专题文档（仍有效）
 

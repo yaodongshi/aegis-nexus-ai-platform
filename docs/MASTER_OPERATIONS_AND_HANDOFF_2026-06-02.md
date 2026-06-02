@@ -86,3 +86,11 @@ bash scripts/apply_litellm_gateway.sh check
 ## 9. 归档策略
 
 历史阶段文档统一进入 `docs/archive/*`，不再作为当前执行基线。
+
+## 10. Harness Runtime 迁移入口
+
+- 新增迁移与发布手册：`docs/HARNESS_RUNTIME_MIGRATION_RUNBOOK_2026-06-02.md`
+- 推荐执行顺序：
+	1. baseline 采样：`scripts/harness_pilot_baseline_run.sh`
+	2. e2e 验收：`scripts/harness_e2e_acceptance_run.sh`
+	3. rollback drill：`scripts/harness_rollback_drill_run.sh`
