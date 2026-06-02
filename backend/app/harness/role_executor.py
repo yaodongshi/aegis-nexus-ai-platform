@@ -21,7 +21,15 @@ class PlannerExecutor:
 class WorkerExecutor:
     def run(self, context: dict[str, Any]) -> dict[str, Any]:
         # Placeholder for engine-specific execution payloads.
-        return {"status": "started", "context": context}
+        capability_alias = str(context.get("capability_alias", ""))
+        latency_ms = 80.0 + float(len(capability_alias))
+        cost_usd = 0.01 + float(len(capability_alias)) / 10000.0
+        return {
+            "status": "started",
+            "context": context,
+            "latency_ms": latency_ms,
+            "cost_usd": cost_usd,
+        }
 
 
 @dataclass

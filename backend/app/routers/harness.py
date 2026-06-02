@@ -18,6 +18,7 @@ from ..harness.schemas import (
     CapabilityAliasContractUpsertRequest,
     PlanCreateRequest,
     PlanRecord,
+    PlanRunResponse,
     ReplayTraceRequest,
     ReplayTraceResponse,
     RolloutDecisionRecord,
@@ -25,6 +26,7 @@ from ..harness.schemas import (
     RuntimeEventIngestRequest,
     RuntimeEventIngestResponse,
     RuntimeEventRecord,
+    RuntimeEventType,
     TraceEventsResponse,
 )
 from ..store import PlatformStore
@@ -298,6 +300,52 @@ def get_trace(
     return store.get_trace(trace_id)
 
 
+@router.post("/plans/{plan_id}/run", response_model=PlanRunResponse)
+def run_plan(
+    plan_id: str,
+    request: Request,
+    store: HarnessPlanLockStore = Depends(get_harness_store),
+    runtime_registry: RuntimeAdapterRegistry = Depends(get_runtime_registry),
+) -> PlanRunResponse:
+    plan = store.get_plan(plan_id)
+    if plan is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Plan not found",
+        )
+
+    adapter_name = str(plan.metadata.get("runtime_adapter") or "noop")
+    adapter = runtime_registry.resolve(adapter_name)
+    adapter_output = adapter.start_plan(plan)
+
+    transition_chain = _transition_chain_for_state(plan.state)
+    events: list[RuntimeEventRecord] = []
+    updated_plan = plan
+    for event_type in transition_chain:
+        updated_plan, event = store.ingest_event(
+            plan_id=plan_id,
+            trace_id=plan.trace_id,
+            payload=RuntimeEventIngestRequest(
+                event_type=event_type,
+                source=f"runtime:{adapter.name}",
+                payload={
+                    "adapter": adapter.name,
+                    "latency_ms": adapter_output.get("latency_ms"),
+                    "cost_usd": adapter_output.get("cost_usd"),
+                },
+            ),
+        )
+        events.append(event)
+
+    request.state.trace_id = plan.trace_id
+    return PlanRunResponse(
+        adapter_name=adapter.name,
+        plan=updated_plan,
+        events=events,
+        adapter_output=adapter_output,
+    )
+
+
 @router.post("/traces/{trace_id}/replay", response_model=ReplayTraceResponse)
 def replay_trace(
     trace_id: str,
@@ -316,3 +364,18 @@ def replay_trace(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
+
+
+def _transition_chain_for_state(state) -> list[RuntimeEventType]:
+    state_value = state.value
+    if state_value == "created":
+        return [
+            RuntimeEventType.VALIDATE,
+            RuntimeEventType.PREPARE,
+            RuntimeEventType.START,
+        ]
+    if state_value == "validated":
+        return [RuntimeEventType.PREPARE, RuntimeEventType.START]
+    if state_value == "ready":
+        return [RuntimeEventType.START]
+    return []

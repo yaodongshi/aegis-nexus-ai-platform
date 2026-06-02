@@ -92,6 +92,16 @@ def _prioritize_model(
     ]
 
 
+def _is_embedding_model_id(model_id: str) -> bool:
+    normalized = model_id.lower().strip()
+    return (
+        "embedding" in normalized
+        or normalized.startswith("embed-")
+        or normalized.endswith("-embed")
+        or normalized == "embed-default"
+    )
+
+
 @router.get("/runtime-health", response_model=PlatformRuntimeHealthResponse)
 def get_runtime_health() -> PlatformRuntimeHealthResponse:
     litellm_base = os.getenv("LITELLM_INTERNAL_BASE_URL", "http://litellm:4000").rstrip("/")
@@ -134,8 +144,14 @@ def get_runtime_health() -> PlatformRuntimeHealthResponse:
         )
 
     model_ids = [str(item.get("id", "")) for item in models if isinstance(item, dict)]
-    chat_models = [name for name in model_ids if name and "embedding" not in name.lower() and "image" not in name.lower()]
-    embedding_models = [name for name in model_ids if "embedding" in name.lower()]
+    chat_models = [
+        name
+        for name in model_ids
+        if name
+        and not _is_embedding_model_id(name)
+        and "image" not in name.lower()
+    ]
+    embedding_models = [name for name in model_ids if _is_embedding_model_id(name)]
 
     checks.append(
         PlatformRuntimeHealthCheck(

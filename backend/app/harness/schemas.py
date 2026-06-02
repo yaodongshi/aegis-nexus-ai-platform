@@ -128,6 +128,13 @@ class RuntimeEventIngestResponse(BaseModel):
     event: RuntimeEventRecord
 
 
+class PlanRunResponse(BaseModel):
+    adapter_name: str
+    plan: PlanRecord
+    events: list[RuntimeEventRecord] = Field(default_factory=list)
+    adapter_output: dict[str, Any] = Field(default_factory=dict)
+
+
 class ReplayTraceRequest(BaseModel):
     source_plan_id: str | None = Field(default=None, max_length=128)
     actor: str = Field(default="operator", min_length=1, max_length=128)

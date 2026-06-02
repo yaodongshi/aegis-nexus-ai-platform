@@ -434,3 +434,36 @@ def test_replay_trace_from_last_stable_checkpoint(monkeypatch) -> None:
         replay_events = replay_trace_resp.json()["events"]
         assert len(replay_events) == 3
         assert replay_events[-1]["event_type"] == "start"
+
+
+def test_run_plan_with_local_graph_adapter(monkeypatch) -> None:
+    monkeypatch.delenv("TEAM_AI_PLATFORM_ADMIN_TOKEN", raising=False)
+    monkeypatch.delenv("TEAM_AI_PLATFORM_DB_DSN", raising=False)
+
+    with TestClient(app) as client:
+        capability_alias = "graph-run-default"
+        upsert_resp = client.put(
+            f"/api/v1/harness/capabilities/{capability_alias}",
+            json={
+                "contract_version": "v1",
+                "runtime_adapter": "local-graph",
+                "stable_strategy_id": "strategy-graph-v1",
+                "canary_traffic_percent": 0,
+            },
+        )
+        assert upsert_resp.status_code == 200, upsert_resp.text
+
+        trace_id = "trace-local-graph-run"
+        plan_id = _create_plan(client, capability_alias, trace_id)
+
+        run_resp = client.post(f"/api/v1/harness/plans/{plan_id}/run")
+        assert run_resp.status_code == 200, run_resp.text
+        payload = run_resp.json()
+        assert payload["adapter_name"] == "local-graph"
+        assert payload["plan"]["state"] == "running"
+        assert [event["event_type"] for event in payload["events"]] == [
+            "validate",
+            "prepare",
+            "start",
+        ]
+        assert payload["adapter_output"]["evaluation"]["accepted"] is True
