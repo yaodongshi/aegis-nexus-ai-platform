@@ -232,6 +232,64 @@ curl -sS http://localhost:3000/api/platform/runtime-health
 3. 查看检索结果质量
 4. 观察性能与日志
 
+### 6.4 代码仓地址在哪里（闭环学习）
+
+先区分两类代码仓：
+
+1. 平台主仓（你当前项目本身）
+- 远端地址可用命令查看：
+
+```bash
+cd team_ai_platform
+git remote -v
+```
+
+2. 闭环学习绑定仓（用于 Skill 提案同步）
+- 这不是固定内置地址。
+- 平台使用你在“闭环学习 -> Git 代码仓绑定”里配置的仓路径和分支。
+- 当前生效的是“当前绑定仓（active）”。
+
+查看当前绑定仓：
+
+```bash
+# 需要管理员 Token
+curl -sS "http://localhost:3000/api/git-repos/active" \
+  -H "X-Admin-Token: $TEAM_AI_PLATFORM_ADMIN_TOKEN"
+```
+
+查看全部绑定仓：
+
+```bash
+curl -sS "http://localhost:3000/api/git-repos?limit=20&offset=0" \
+  -H "X-Admin-Token: $TEAM_AI_PLATFORM_ADMIN_TOKEN"
+```
+
+### 6.5 如何看到绑定仓里面的内容
+
+情况 A：绑定的是你本机可访问目录
+- 直接用文件浏览器或 IDE 打开该路径。
+
+情况 B：绑定的是容器内路径（例如 /app/...）
+- 需要进入容器查看：
+
+```bash
+docker exec -it team-ai-backend sh
+cd <active_repo_path>
+ls -la
+git remote -v
+```
+
+### 6.6 为什么感觉“没有内置地址”
+
+这是设计如此：
+- 平台只维护“绑定关系”（name/path/branch/active），不强制写死一个全局仓地址。
+- 目的是让每个团队按自己的仓库规范接入。
+
+如果你希望统一地址，做法是：
+1. 在“Git 代码仓绑定”只保留 1 个标准仓。
+2. 将其设为 active。
+3. 其他仓全部删除或禁用。
+
 ## 7. Harness Runtime 使用与验收
 
 ### 7.1 基线采样
